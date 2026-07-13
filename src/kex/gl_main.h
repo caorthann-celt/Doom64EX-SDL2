@@ -23,7 +23,7 @@
 #ifndef __GL_MAIN_H__
 #define __GL_MAIN_H__
 
-#include <SDL3/SDL_opengl.h>
+#include <SDL2/SDL_opengl.h>
 #include "dgl.h"
 
 typedef GLuint        dtexture;

@@ -26,7 +26,7 @@
 #ifndef __I_VIDEO_H__
 #define __I_VIDEO_H__
 
-#include <SDL3/SDL.h>
+#include <SDL2/SDL.h>
 #include "d_event.h"
 
 #define SDL_BPP        32

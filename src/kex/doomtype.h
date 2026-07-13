@@ -26,7 +26,8 @@
 #define __DOOMTYPE__
 
 #ifdef _WIN32
-#include <SDL3/SDL.h>
+#include <SDL2/SDL.h>
+#include <SDL2/SDL_endian.h>
 #else
 #include <stdint.h>
 #endif

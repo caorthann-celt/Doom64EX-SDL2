@@ -36,7 +36,7 @@
 #include "tables.h"
 #include "m_misc.h"
 #include "con_console.h"
-#include <SDL3/SDL.h>
+#include <SDL2/SDL.h>
 #include "i_video.h"
 
 #define FEATURE_MULTIPLAYER 1

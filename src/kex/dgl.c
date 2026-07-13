@@ -24,7 +24,7 @@
 //
 //-----------------------------------------------------------------------------
 
-#include <SDL3/SDL_opengl.h>
+#include <SDL2/SDL_opengl.h>
 #include "doomdef.h"
 #include "doomstat.h"
 #include "gl_main.h"

@@ -35,7 +35,7 @@
 #include "doomdef.h"
 #include "doomstat.h"
 #include "d_main.h"
-#include <SDL3/SDL.h>
+#include <SDL2/SDL.h>
 #include "i_video.h"
 #include "m_misc.h"
 #include "i_system.h"
@@ -497,8 +497,6 @@ int dsnprintf(char *src, size_t n, const char *str, ...) {
 #else
 #ifndef _DEBUG
 #include <windows.h>
-#include <SDL3/SDL_main.h>
-
 extern int __cdecl I_W32ExceptionHandler(PEXCEPTION_POINTERS ep);
 int I_Main(int argc, char *argv[]);
 

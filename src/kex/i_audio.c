@@ -37,7 +37,7 @@
 #include <unistd.h>
 #endif
 
-#include <SDL3/SDL.h>
+#include <SDL2/SDL.h>
 #include <fluidsynth.h>
 
 #include "doomtype.h"
@@ -56,7 +56,7 @@ CVAR(s_soundfont, DOOMSND.SF2);
 #ifdef _WIN32
 CVAR_CMD(s_driver, dsound)
 #else
-CVAR_CMD(s_driver, sdl3)
+CVAR_CMD(s_driver, sdl2)
 #endif
 {
     char* driver = cvar->string;
@@ -82,21 +82,21 @@ CVAR_CMD(s_driver, sdl3)
             !dstrcmp(driver, "sndio")       ||
             !dstrcmp(driver, "sndman")      ||
             !dstrcmp(driver, "dart")        ||
-            !dstrcmp(driver, "sdl3")        ||
+            !dstrcmp(driver, "sdl2")        ||
             !dstrcmp(driver, "file")
       ) {
         return;
     }
 
     CON_Warnf("Invalid driver name\n");
-    CON_Warnf("Valid driver names: jack, alsa, oss, pulseaudio, coreaudio, dsound, portaudio, sndio, sndman, dart, sdl3, file\n");
+    CON_Warnf("Valid driver names: jack, alsa, oss, pulseaudio, coreaudio, dsound, portaudio, sndio, sndman, dart, sdl2, file\n");
     CON_CvarSet(cvar->name, DEFAULT_FLUID_DRIVER);
 }
 
 //
 // Mutex
 //
-static SDL_Mutex *lock = NULL;
+static SDL_mutex *lock = NULL;
 #define MUTEX_LOCK()    SDL_LockMutex(lock);
 #define MUTEX_UNLOCK()  SDL_UnlockMutex(lock);
 
@@ -104,9 +104,9 @@ static SDL_Mutex *lock = NULL;
 // Semaphore stuff
 //
 
-static SDL_Semaphore *semaphore = NULL;
-#define SEMAPHORE_LOCK()    SDL_WaitSemaphore(semaphore);
-#define SEMAPHORE_UNLOCK()  SDL_SignalSemaphore(semaphore);
+static SDL_sem *semaphore = NULL;
+#define SEMAPHORE_LOCK()    SDL_SemWait(semaphore);
+#define SEMAPHORE_UNLOCK()  SDL_SemPost(semaphore);
 
 // 20120205 villsa - bool to determine if sequencer is ready or not
 static dboolean seqready = false;
@@ -1129,7 +1129,7 @@ static void Seq_Shutdown(doomseq_t* seq) {
 
 static int SDLCALL Thread_PlayerHandler(void *param) {
     doomseq_t* seq = (doomseq_t*)param;
-    long start = SDL_GetTicks();
+    Uint32 start = SDL_GetTicks();
     long delay = 0;
     int status;
     dword count = 0;

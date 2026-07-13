@@ -29,7 +29,7 @@
 #include <stdint.h>
 #include <limits.h>
 
-#include <SDL3/SDL_platform_defines.h>
+#include <SDL2/SDL_platform.h>
 
 #include "m_fixed.h"
 #include "doomdef.h"

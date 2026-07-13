@@ -25,7 +25,7 @@
 
 #include <math.h>
 
-#include <SDL3/SDL_opengl.h>
+#include <SDL2/SDL_opengl.h>
 #include "gl_main.h"
 #include "i_system.h"
 

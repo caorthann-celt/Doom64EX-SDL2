@@ -26,8 +26,8 @@
 
 #include <math.h>
 
-#include <SDL3/SDL.h>
-#include <SDL3/SDL_opengl.h>
+#include <SDL2/SDL.h>
+#include <SDL2/SDL_opengl.h>
 
 #include "doomdef.h"
 #include "doomstat.h"
@@ -610,13 +610,13 @@ void GL_Init(void) {
     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, (int)v_depthsize.value);
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, (int)v_vsync.value);
 
-    flags |= SDL_WINDOW_OPENGL | SDL_WINDOW_INPUT_FOCUS | SDL_WINDOW_MOUSE_FOCUS | SDL_WINDOW_HIGH_PIXEL_DENSITY;
+    flags |= SDL_WINDOW_OPENGL | SDL_WINDOW_INPUT_FOCUS | SDL_WINDOW_MOUSE_FOCUS | SDL_WINDOW_ALLOW_HIGHDPI;
 
     if(!InWindow) {
         flags |= SDL_WINDOW_FULLSCREEN;
     }
 
-    window = SDL_CreateWindow("DOOM64EX-Classic", video_width, video_height, flags);
+    window = SDL_CreateWindow("DOOM64EX-Classic", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, video_width, video_height, flags);
 
     if (window == NULL || (glContext = SDL_GL_CreateContext(window)) == NULL) {
         if (window) { SDL_DestroyWindow(window); window = NULL; }
@@ -630,7 +630,7 @@ void GL_Init(void) {
 
         SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, (int)v_depthsize.value);
 
-        window = SDL_CreateWindow("DOOM64EX-Classic", video_width, video_height, flags);
+        window = SDL_CreateWindow("DOOM64EX-Classic", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, video_width, video_height, flags);
         if (window == NULL || (glContext = SDL_GL_CreateContext(window)) == NULL) {
             if (window) { 
                 SDL_DestroyWindow(window); 
@@ -640,7 +640,7 @@ void GL_Init(void) {
             CON_CvarSetValue(v_buffersize.name, 16);
             SDL_GL_SetAttribute(SDL_GL_BUFFER_SIZE, (int)v_buffersize.value);
 
-            window = SDL_CreateWindow("DOOM64EX-Classic", video_width, video_height, flags);
+            window = SDL_CreateWindow("DOOM64EX-Classic", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, video_width, video_height, flags);
             if (window == NULL || (glContext = SDL_GL_CreateContext(window)) == NULL) {
                 if (window) { 
                     SDL_DestroyWindow(window); 

@@ -136,7 +136,7 @@ LRESULT CALLBACK SysConsoleProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             SetBkColor((HDC) wParam, RGB(64, 64, 64));
             SetTextColor((HDC) wParam, RGB(0xff, 0xff, 0x00));
 
-            return (long)hbrEditBackground;
+            return (LRESULT)hbrEditBackground;
         }
         break;
 
@@ -282,14 +282,14 @@ void I_Sleep(unsigned long usecs) {
     SDL_Delay(usecs);
 }
 
-static int basetime = 0;
+static Uint32 basetime = 0;
 
 //
 // I_GetTimeNormal
 //
 
 static int I_GetTimeNormal(void) {
-    uint32 ticks;
+    Uint32 ticks;
 
     ticks = SDL_GetTicks();
 
@@ -331,17 +331,17 @@ void I_InitClockRate(void) {
 // FRAME INTERPOLTATION
 //
 
-static unsigned int start_displaytime;
-static unsigned int displaytime;
+static Uint32 start_displaytime;
+static Uint32 displaytime;
 static dboolean InDisplay = false;
 static int saved_gametic = -1;
 
 dboolean realframe = false;
 
 fixed_t         rendertic_frac = 0;
-unsigned int    rendertic_start;
-unsigned int    rendertic_step;
-unsigned int    rendertic_next;
+Uint32          rendertic_start;
+Uint32          rendertic_step;
+Uint32          rendertic_next;
 const float     rendertic_msec = 100 * TICRATE / 100000.0f;
 
 //
@@ -375,7 +375,7 @@ void I_EndDisplay(void) {
 //
 
 fixed_t I_GetTimeFrac(void) {
-    unsigned long now;
+    Uint32 now;
     fixed_t frac;
 
     now = SDL_GetTicks();
@@ -401,7 +401,7 @@ fixed_t I_GetTimeFrac(void) {
 
 void I_GetTime_SaveMS(void) {
     rendertic_start = SDL_GetTicks();
-    rendertic_next = (unsigned int)((rendertic_start * rendertic_msec + 1.0f) / rendertic_msec);
+    rendertic_next = (Uint32)((rendertic_start * rendertic_msec + 1.0f) / rendertic_msec);
     rendertic_step = rendertic_next - rendertic_start;
 }
 
@@ -462,7 +462,7 @@ int (*I_GetTime)(void) = I_GetTime_Error;
 //
 
 int I_GetTimeMS(void) {
-    uint32 ticks;
+    Uint32 ticks;
 
     ticks = SDL_GetTicks();
 

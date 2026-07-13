@@ -243,7 +243,7 @@ CVAR_CMD(m_menufadetime, 0) {
 }
 
 CVAR_CMD(m_menumouse, 1) {
-    SDL_ShowCursor();
+    SDL_ShowCursor(SDL_ENABLE);
     if(cvar->value <= 0) {
         itemSelected = -1;
     }

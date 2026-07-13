@@ -15,18 +15,17 @@
 #define _DEFAULT_SOURCE
 #endif
 
-#include <string.h> /* for memset */
-#include <stdarg.h> /* for va_list */
-#include <stdlib.h> /* for fcvt */
-
-#include <SDL3/SDL.h> // villsa
-
-#include "psnprntf.h"
-
 #ifndef _SVID_SOURCE
 #define _SVID_SOURCE
 #endif
 #endif
+
+#include <stdarg.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include "psnprntf.h"
 
 /* FCVT macro: MSVC uses _fcvt, others use fcvt */
 #if defined(_MSC_VER)

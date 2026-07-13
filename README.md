@@ -3,13 +3,13 @@ Doom64EX Classic - for those that preferred 2.5 over EX-Plus
 
 # Changes from EX 2.5
 
-1. SDL3 Support
-2. SDL3 Gamepad Support
+1. SDL2 Support
+2. SDL2 GameController Support
 3. Multiplatform modern CMake build system
 4. Perfect frametimes and interpolation
 5. Fully 64bit compatible
 
-EX-Classic is essentially EX 2.5, just fixed up, cleaned up and modernised to the latest standard of SDL3.  There will be a few bugs that will be ironed out, but this only relates to Gamepad support.  There will be some backports from EX-Plus (for interpolation of the automap and the Gamepad fixes).
+EX-Classic is essentially EX 2.5, just fixed up, cleaned up and modernised for SDL2. There will be a few bugs that will be ironed out, but this only relates to GameController support. There will be some backports from EX-Plus (for interpolation of the automap and the GameController fixes).
 
 Note to self-builders, you'll want to use the provided lpng1514 zip in the 'lib' directory.  Only this version allows the WadGen tool to correctly unpack the ROM and also, only this version works with the palette animations.  I've been fighting with lpng16 for years and to be honest, this just prevents headaches and it works.
 

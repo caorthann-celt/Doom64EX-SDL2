@@ -47,4 +47,5 @@ dkms.conf
 *.dwo
 
 # build
+/build/
 src/kex/build/

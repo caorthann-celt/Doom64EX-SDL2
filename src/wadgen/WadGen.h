@@ -2,7 +2,7 @@
 #define _WADGEN_H_
 
 #ifdef _WIN32
-#include <SDL3/SDL.h>
+#include <SDL2/SDL.h>
 #else
 #include <stdint.h>
 #endif
@@ -33,7 +33,7 @@
 #ifdef PLATFORM_PC
 
 #define USE_PNG
-#include <libpng15/png.h>
+#include <png.h>
 
 #endif
 

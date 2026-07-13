@@ -7,9 +7,15 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
 
 find_package(ZLIB REQUIRED)
-find_package(PNG  REQUIRED)
 
-add_executable(WadGen
+set(PNG_SHARED OFF CACHE BOOL "" FORCE)
+set(PNG_STATIC ON CACHE BOOL "" FORCE)
+set(PNG_TESTS OFF CACHE BOOL "" FORCE)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../lib/lpng1514
+                 ${CMAKE_CURRENT_BINARY_DIR}/lpng1514
+                 EXCLUDE_FROM_ALL)
+
+add_executable(WadGen WIN32
   DeflateN64.c
   Files.c
   Gfx.c
@@ -26,33 +32,13 @@ add_executable(WadGen
   WadGen.c
 )
 
-if(TARGET PNG::PNG)
-else()
-  if(PNG_INCLUDE_DIRS)
-    target_include_directories(WadGen PRIVATE ${PNG_INCLUDE_DIRS})
-  elseif(PNG_INCLUDE_DIR)
-    target_include_directories(WadGen PRIVATE ${PNG_INCLUDE_DIR})
-  endif()
-endif()
-
 if(MSVC)
   target_compile_definitions(WadGen PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX)
 else()
   target_compile_options(WadGen PRIVATE -Wall -Wextra)
 endif()
 
-# Link dependencies
-set(_PNG_LIB  PNG::PNG)
-if(NOT TARGET PNG::PNG)
-  set(_PNG_LIB  ${PNG_LIBRARY})
-endif()
-
-set(_ZLIB_LIB ZLIB::ZLIB)
-if(NOT TARGET ZLIB::ZLIB)
-  set(_ZLIB_LIB ${ZLIB_LIBRARY})
-endif()
-
-target_link_libraries(WadGen PRIVATE ${_PNG_LIB} ${_ZLIB_LIB})
+target_link_libraries(WadGen PRIVATE png_static ZLIB::ZLIB)
 
 if(WIN32)
   target_link_libraries(WadGen PRIVATE comctl32)
