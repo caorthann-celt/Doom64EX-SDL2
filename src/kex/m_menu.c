@@ -4612,7 +4612,7 @@ dboolean M_Responder(event_t* ev) {
             }
         }
 
-        return menuactive || gamestate != GS_LEVEL || MenuBindActive;
+        return menuactive || MenuBindActive;
     }
     else if(ev->type == ev_mouse && (ev->data2 != 0.0 | ev->data3 != 0.0)) {
         // handle mouse-over selection

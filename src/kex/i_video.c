@@ -465,7 +465,8 @@ void I_GamepadUpdate(void) {
     I_GamepadStickAxisEvents(CONTROLLER_AXIS_RIGHT_RIGHT, CONTROLLER_AXIS_RIGHT_LEFT,
         CONTROLLER_AXIS_RIGHT_DOWN, CONTROLLER_AXIS_RIGHT_UP, rx, ry);
 
-    const bool in_menu = (menuactive || gamestate != GS_LEVEL);
+    // Intermissions and finales still need the player's normal bindings, such as +use.
+    const bool in_menu = menuactive;
 
     if(in_menu != gamepad64.in_menu) {
         if(in_menu) {
