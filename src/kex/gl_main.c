@@ -41,6 +41,10 @@
 #include "m_misc.h"
 #include "g_actions.h"
 
+#ifdef DOOM64EX_UWP
+#include "uwp_video.h"
+#endif
+
 SDL_Window* window = NULL;
 SDL_GLContext   glContext = NULL;
 
@@ -596,6 +600,12 @@ void GL_Init(void) {
 
     I_InitScreen();
 
+#ifdef DOOM64EX_UWP
+    if (SDL_GL_LoadLibrary("opengl32.dll") < 0) {
+        I_Error("GL_Init: failed to load packaged opengl32.dll: %s", SDL_GetError());
+    }
+#endif
+
     SDL_GL_SetAttribute(SDL_GL_RED_SIZE, 0);
     SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, 0);
     SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, 0);
@@ -612,9 +622,11 @@ void GL_Init(void) {
 
     flags |= SDL_WINDOW_OPENGL | SDL_WINDOW_INPUT_FOCUS | SDL_WINDOW_MOUSE_FOCUS | SDL_WINDOW_ALLOW_HIGHDPI;
 
+#ifndef DOOM64EX_UWP
     if(!InWindow) {
         flags |= SDL_WINDOW_FULLSCREEN;
     }
+#endif
 
     window = SDL_CreateWindow("DOOM64EX-Classic", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, video_width, video_height, flags);
 

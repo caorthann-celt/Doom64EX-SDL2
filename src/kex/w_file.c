@@ -37,6 +37,10 @@
 #include "m_misc.h"
 #include "w_file.h"
 
+#ifdef DOOM64EX_UWP
+#include "uwp_storage_root.h"
+#endif
+
 typedef struct {
     wad_file_t wad;
     FILE *fstream;
@@ -145,6 +149,10 @@ static void BuildIWADDirList(void) {
     }
 
     // Look in the current directory.  Doom always does this.
+
+#ifdef DOOM64EX_UWP
+    AddIWADDir((char *)doom64ex_uwp_content_root());
+#endif
 
     AddIWADDir(".");
 

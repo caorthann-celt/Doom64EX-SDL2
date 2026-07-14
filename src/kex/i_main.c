@@ -492,7 +492,8 @@ int dsnprintf(char *src, size_t n, const char *str, ...) {
 // main
 //
 
-#ifndef _MSC_VER
+#if defined(DOOM64EX_UWP)
+#elif !defined(_MSC_VER)
 #define I_Main main
 #else
 #ifndef _DEBUG
@@ -525,7 +526,7 @@ int I_Main(int argc, char *argv[]) {
 #endif
 
     //process affinity mask stuff
-#if defined(_WIN32) || defined(HAVE_SCHED_SETAFFINITY)
+#if !defined(DOOM64EX_UWP) && (defined(_WIN32) || defined(HAVE_SCHED_SETAFFINITY))
     {
         extern void I_SetAffinityMask(void);
         I_SetAffinityMask();

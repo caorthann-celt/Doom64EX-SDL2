@@ -39,6 +39,10 @@
 #include "doomstat.h"
 #include "i_system.h"
 #include "i_video.h"
+
+#ifdef DOOM64EX_UWP
+#include "uwp_video.h"
+#endif
 #include "d_main.h"
 #include "gl_main.h"
 
@@ -216,6 +220,10 @@ void I_StartTic(void) {
 void I_FinishUpdate(void) {
     I_UpdateGrab();
     SDL_GL_SwapWindow(window);
+
+#ifdef DOOM64EX_UWP
+    doom64ex_uwp_after_present(window);
+#endif
 
     BusyDisk = false;
 }
@@ -740,6 +748,7 @@ dboolean I_UpdateGrab(void) {
     extern dboolean menuactive;
     dboolean grab = 1;
 
+#ifndef DOOM64EX_UWP
     if (grab && !currently_grabbed) {
         SDL_SetRelativeMouseMode(SDL_TRUE);
         SDL_SetWindowGrab(window, SDL_TRUE);
@@ -751,6 +760,7 @@ dboolean I_UpdateGrab(void) {
         SDL_SetWindowGrab(window, SDL_FALSE);
         currently_grabbed = false;
     }
+#endif
 
     currently_grabbed = grab;
 

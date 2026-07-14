@@ -40,7 +40,9 @@ void I_Init(void);
 
 #ifdef _WIN32
 
+#if !defined(DOOM64EX_UWP)
 #define USESYSCONSOLE
+#endif
 
 void I_SpawnSysConsole(void);
 void I_ShowSysConsole(dboolean show);

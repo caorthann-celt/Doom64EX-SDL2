@@ -49,6 +49,10 @@
 #include "i_swap.h"
 #include "con_console.h"    // for cvars
 
+#ifdef DOOM64EX_UWP
+#include "uwp_storage_root.h"
+#endif
+
 // 20120203 villsa - cvar for soundfont location
 CVAR(s_soundfont, DOOMSND.SF2);
 
@@ -1252,10 +1256,21 @@ void I_InitSequencer(void) {
     // load soundfont
     //
 #ifdef _WIN32
+#ifdef DOOM64EX_UWP
+    {
+        const char *sfpath = doom64ex_uwp_find_content_file(s_soundfont.string);
+
+        doomseq.sfont_id = fluid_synth_sfload(
+                               doomseq.synth, sfpath, 1);
+
+        CON_DPrintf("Loading %s\n", sfpath);
+    }
+#else
     doomseq.sfont_id = fluid_synth_sfload(
                            doomseq.synth, s_soundfont.string, 1);
 
     CON_DPrintf("Loading %s\\%s\n", I_DoomExeDir(), s_soundfont.string);
+#endif
 
 #else
     // 20120111 bkw: look in the same places as doom64.wad. Someday this needs
