@@ -55,6 +55,7 @@ CVAR(v_msensitivityy, 5);
 CVAR(v_gamepadsensitivityx, 5);
 CVAR(v_gamepadsensitivityy, 5);
 CVAR(v_gamepadlook, 1);
+CVAR(v_gamepadlookinvert, 0);
 CVAR(v_macceleration, 0);
 CVAR(v_mlook, 0);
 CVAR(v_mlookinvert, 0);
@@ -835,6 +836,7 @@ void V_RegisterCvars(void) {
     CON_CvarRegister(&v_gamepadsensitivityx);
     CON_CvarRegister(&v_gamepadsensitivityy);
     CON_CvarRegister(&v_gamepadlook);
+    CON_CvarRegister(&v_gamepadlookinvert);
     CON_CvarRegister(&v_macceleration);
     CON_CvarRegister(&v_mlook);
     CON_CvarRegister(&v_mlookinvert);

@@ -171,6 +171,7 @@ CVAR_EXTERNAL(v_msensitivityy);
 CVAR_EXTERNAL(v_gamepadsensitivityx);
 CVAR_EXTERNAL(v_gamepadsensitivityy);
 CVAR_EXTERNAL(v_gamepadlook);
+CVAR_EXTERNAL(v_gamepadlookinvert);
 
 //
 // G_RegisterCvars
@@ -683,7 +684,7 @@ void G_BuildTiccmd(ticcmd_t* cmd) {
     if(forcefreelook != 2) {
         if((int)v_gamepadlook.value || forcefreelook) {
             const int controller_pitch = (int)(pc->controllerlooky * 8.0f);
-            cmd->pitch -= (int)v_mlookinvert.value ? controller_pitch : -controller_pitch;
+            cmd->pitch -= (int)v_gamepadlookinvert.value ? controller_pitch : -controller_pitch;
         }
     }
 

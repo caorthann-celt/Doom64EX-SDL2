@@ -3,7 +3,7 @@
          xmlns:mp="http://schemas.microsoft.com/appx/2014/phone/manifest"
          xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
          IgnorableNamespaces="uap mp">
-  <Identity Name="Doom64EXClassicUWP" Publisher="CN=Caorthann" Version="1.0.0.30" />
+  <Identity Name="Doom64EXClassicUWP" Publisher="CN=Caorthann" Version="1.0.0.31" />
   <mp:PhoneIdentity PhoneProductId="07a0ea5b-6c05-4864-9f29-84485bed6cec" PhonePublisherId="00000000-0000-0000-0000-000000000000" />
   <Properties>
     <DisplayName>Doom64EX Classic</DisplayName>

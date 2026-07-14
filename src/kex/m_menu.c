@@ -1507,6 +1507,7 @@ CVAR_EXTERNAL(v_msensitivityy);
 CVAR_EXTERNAL(v_gamepadsensitivityx);
 CVAR_EXTERNAL(v_gamepadsensitivityy);
 CVAR_EXTERNAL(v_gamepadlook);
+CVAR_EXTERNAL(v_gamepadlookinvert);
 CVAR_EXTERNAL(v_mlook);
 CVAR_EXTERNAL(v_mlookinvert);
 CVAR_EXTERNAL(v_yaxismove);
@@ -2846,12 +2847,13 @@ void M_ChangeKeyBinding(int choice);
 void M_ChangeGamepadBinding(int choice);
 void M_ChangeGamepadSensitivity(int choice);
 void M_ChangeGamepadLook(int choice);
+void M_ChangeGamepadInvert(int choice);
 void M_BuildControlMenu(void);
 void M_DrawControls(void);
 
 #define NUM_NONBINDABLE_ITEMS   8
 #define NUM_CONTROL_ACTIONS     44
-#define NUM_GAMEPAD_PREFIX_ITEMS 9
+#define NUM_GAMEPAD_PREFIX_ITEMS 10
 #define NUM_GAMEPAD_SPACERS      4
 #define NUM_CONTROL_ITEMS        NUM_CONTROL_ACTIONS + NUM_GAMEPAD_PREFIX_ITEMS + NUM_GAMEPAD_SPACERS
 
@@ -2862,6 +2864,7 @@ enum {
     gamepad_sensy,
     gamepad_sensy_bar,
     gamepad_look,
+    gamepad_lookinvert,
     gamepad_settings_gap,
     gamepad_bindings,
     gamepad_bindings_gap,
@@ -3063,6 +3066,16 @@ void M_BuildControlMenu(void) {
                 menu->menuitems[item].status = 2;
                 menu->menuitems[item].routine = M_ChangeGamepadLook;
                 break;
+            case gamepad_lookinvert:
+                dstrcpy(menu->menuitems[item].name, "Invert Look");
+                for(i = dstrlen(menu->menuitems[item].name); i < 15; i++) {
+                    menu->menuitems[item].name[i] = ' ';
+                }
+                menu->menuitems[item].name[15] = ':';
+                dstrcpy(&menu->menuitems[item].name[16], msgNames[(int)v_gamepadlookinvert.value]);
+                menu->menuitems[item].status = 2;
+                menu->menuitems[item].routine = M_ChangeGamepadInvert;
+                break;
             }
         }
         else if(ShowGamepadBindings && item == gamepad_settings_gap) {
@@ -3172,6 +3185,11 @@ void M_ChangeGamepadSensitivity(int choice) {
 
 void M_ChangeGamepadLook(int choice) {
     M_SetOptionValue(choice, 0, 1, 1, &v_gamepadlook);
+    M_BuildControlMenu();
+}
+
+void M_ChangeGamepadInvert(int choice) {
+    M_SetOptionValue(choice, 0, 1, 1, &v_gamepadlookinvert);
     M_BuildControlMenu();
 }
 
