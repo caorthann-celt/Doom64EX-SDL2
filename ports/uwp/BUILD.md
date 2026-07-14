@@ -61,6 +61,23 @@ DOOM64.WAD
 DOOMSND.SF2
 ```
 
+## Custom WADs
+
+The launcher appears before the game starts. `Start Game` runs the base game;
+`Choose Custom WAD` opens the load-order screen.
+
+Put custom WADs in either of these folders:
+
+```text
+E:\doom64ex\wads
+LocalState\wads
+```
+
+The launcher merges both folders into one list. If a WAD has the same filename
+in both places, the copy on `E:` wins. Add WADs to the right-hand list in the
+order you want, then press Menu to start the game. The game receives them using
+its normal `-file` option.
+
 ## Build
 
 Start from a Visual Studio UWP developer prompt, or run `VsDevCmd.bat` with:

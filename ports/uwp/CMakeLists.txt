@@ -79,12 +79,15 @@ target_link_libraries(Doom64EXGame PRIVATE
 
 add_executable(Doom64EXClassicUWP WIN32
     "${CMAKE_CURRENT_LIST_DIR}/main.cpp"
-    "${CMAKE_CURRENT_LIST_DIR}/doom64ex-entry.cpp")
+    "${CMAKE_CURRENT_LIST_DIR}/doom64ex-entry.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/compat/uwp_wad_launcher.cpp")
 set_source_files_properties(
     "${CMAKE_CURRENT_LIST_DIR}/main.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/doom64ex-entry.cpp"
     PROPERTIES COMPILE_OPTIONS "/ZW")
-target_include_directories(Doom64EXClassicUWP PRIVATE "${DOOM64EX_DEPS_X64}/include")
+target_include_directories(Doom64EXClassicUWP PRIVATE
+    "${DOOM64EX_DEPS_X64}/include"
+    "${CMAKE_CURRENT_LIST_DIR}/compat")
 target_compile_definitions(Doom64EXClassicUWP PRIVATE SDL_MAIN_HANDLED=1)
 target_link_libraries(Doom64EXClassicUWP PRIVATE Doom64EXGame SDL2::SDL2 WindowsApp.lib)
 set_target_properties(Doom64EXClassicUWP PROPERTIES
