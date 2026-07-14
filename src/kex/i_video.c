@@ -39,6 +39,7 @@
 #include "doomstat.h"
 #include "i_system.h"
 #include "i_video.h"
+#include "g_actions.h"
 
 #ifdef DOOM64EX_UWP
 #include "uwp_video.h"
@@ -51,6 +52,9 @@ bool	window_mouse;
 
 CVAR(v_msensitivityx, 5);
 CVAR(v_msensitivityy, 5);
+CVAR(v_gamepadsensitivityx, 5);
+CVAR(v_gamepadsensitivityy, 5);
+CVAR(v_gamepadlook, 1);
 CVAR(v_macceleration, 0);
 CVAR(v_mlook, 0);
 CVAR(v_mlookinvert, 0);
@@ -242,56 +246,56 @@ int            DualMouse;
 dboolean    MouseMode;//false=microsoft, true=mouse systems
 
 //
-// SDL2 game controller / joystick support.
+// SDL controller input.
 //
 
-// Ugly shims to link the Gamepad with the keyboard / mouse controls
 #define GAMEPAD_MENU_INITIAL_DELAY_TICS  12
 #define GAMEPAD_MENU_REPEAT_TICS         4
 #define GAMEPAD_MENU_STICK_THRESH        0.50f
-#define GAMEPAD_LEFT_DEADZONE     0.18f
-#define GAMEPAD_RIGHT_DEADZONE    0.20f
 #define GAMEPAD_TRIGGER_THRESHOLD 0.30f
-#define GAMEPAD_LOOK_BASE_SPEED   6.0f
-#define GAMEPAD_KEY_MOVE_FWD      SDLK_w
-#define GAMEPAD_KEY_MOVE_BACK     SDLK_s
-#define GAMEPAD_KEY_MOVE_LEFT     SDLK_a
-#define GAMEPAD_KEY_MOVE_RIGHT    SDLK_d
-#define GAMEPAD_KEY_FIRE          KEY_CTRL
-#define GAMEPAD_KEY_USE           SDLK_e
-#define GAMEPAD_KEY_RUN			  KEY_SHIFT
-#define GAMEPAD_KEY_AUTOMAP		  SDLK_TAB
-#define GAMEPAD_KEY_NEXT_WEAPON   KEY_MWHEELUP
-#define GAMEPAD_KEY_PREV_WEAPON   KEY_MWHEELDOWN
-#define GAMEPAD_KEY_PAUSE         SDLK_ESCAPE
 #define GAMEPAD_INNER_DZ_LEFT    0.18f
 #define GAMEPAD_INNER_DZ_RIGHT   0.20f
 #define GAMEPAD_OUTER_DZ         0.02f
 #define GAMEPAD_ANTI_DZ          0.04f
 #define GAMEPAD_EXPO_LEFT        1.20f
 #define GAMEPAD_EXPO_RIGHT       1.60f
-#define GAMEPAD_LOOK_SMOOTH_TC   0.060f
-#define GAMEPAD_ADS_LTRIG        0.55f
-#define GAMEPAD_ADS_SLOWDOWN     0.55f
 
 extern void D_PostEvent(event_t*);
 extern gamestate_t gamestate;
 
 static struct {
     SDL_GameController* gamepad;
-    SDL_Joystick* joy;
     SDL_JoystickID active_id;
 
-    bool player_forward, player_backwards, player_left, player_right;
-    bool player_fire, player_next_weapon, player_previous_weapon, player_use, player_pause, player_run, player_automap;
+    bool action[NUM_CONTROLLER_BUTTONS];
+    bool in_menu;
 
     bool mouse_up, mouse_down, mouse_left, mouse_right;
-    bool mouse_accept, mouse_back, mouse_scroll_up, mouse_scroll_down;
-    unsigned int right_arrow_key_up, right_arrow_key_down, right_arrow_key_left, right_arrow_key_right;
-    float gamepad_look_fx, gamepad_look_fy, gamepad_look_dx, gamepad_look_dy;
+    bool mouse_accept, mouse_back, mouse_scroll_up, mouse_scroll_down, mouse_delete;
+    int menu_up_tic, menu_down_tic, menu_left_tic, menu_right_tic;
+    int menu_accept_tic, menu_back_tic, menu_page_up_tic, menu_page_down_tic, menu_delete_tic;
 
     bool init;
 } gamepad64;
+
+static const SDL_GameControllerButton ControllerButtonMap[CONTROLLER_LEFT_TRIGGER] = {
+    SDL_CONTROLLER_BUTTON_A,
+    SDL_CONTROLLER_BUTTON_B,
+    SDL_CONTROLLER_BUTTON_X,
+    SDL_CONTROLLER_BUTTON_Y,
+    SDL_CONTROLLER_BUTTON_BACK,
+    SDL_CONTROLLER_BUTTON_START,
+    SDL_CONTROLLER_BUTTON_LEFTSHOULDER,
+    SDL_CONTROLLER_BUTTON_RIGHTSHOULDER,
+    SDL_CONTROLLER_BUTTON_LEFTSTICK,
+    SDL_CONTROLLER_BUTTON_RIGHTSTICK,
+    SDL_CONTROLLER_BUTTON_DPAD_UP,
+    SDL_CONTROLLER_BUTTON_DPAD_DOWN,
+    SDL_CONTROLLER_BUTTON_DPAD_LEFT,
+    SDL_CONTROLLER_BUTTON_DPAD_RIGHT
+};
+
+// Menu input gets its own events, so controller navigation never fakes keyboard input.
 
 static SDL_INLINE float I_GamepadClamp(float x) { return SDL_clamp(x, 0.f, 1.f); }
 
@@ -315,47 +319,41 @@ static void I_GamepadRadialLookSmoothing(float x, float y,
     *oy = ny * t;
 }
 
-static SDL_INLINE float I_GamepadLookSmoothing(float prev, float input, float dt, float tc) {
-    float alpha = (tc > 0.f) ? (dt / (tc + dt)) : 1.f;
-    alpha = SDL_clamp(alpha, 0.f, 1.f);
-    return prev + alpha * (input - prev);
-}
+static SDL_INLINE void I_GamepadPostMenuEvent(gamepad_menu_event_t action) {
+    event_t ev;
 
-static SDL_INLINE void I_GamepadPostKeyEvent(int key, bool down) {
-    event_t ev; ev.type = down ? ev_keydown : ev_keyup; ev.data1 = key; ev.data2 = ev.data3 = 0; ev.data4 = 0;
+    ev.type = ev_gamepad;
+    ev.data1 = action;
+    ev.data2 = ev.data3 = 0;
+    ev.data4 = 0;
     D_PostEvent(&ev);
 }
 
-static SDL_INLINE void I_GamepadMenuEvent(bool now, bool* prev, int keycode, unsigned int* next_tic) {
+static SDL_INLINE void I_GamepadMenuEvent(bool now, bool* prev, gamepad_menu_event_t action, int* next_tic) {
     if (now && !*prev) {
-        I_GamepadPostKeyEvent(keycode, true);
+        I_GamepadPostMenuEvent(action);
         *next_tic = gametic + GAMEPAD_MENU_INITIAL_DELAY_TICS;
     }
     else if (now && *prev && gametic >= *next_tic) {
-        I_GamepadPostKeyEvent(keycode, true);
+        I_GamepadPostMenuEvent(action);
         *next_tic = gametic + GAMEPAD_MENU_REPEAT_TICS;
-    }
-    else if (!now && *prev) {
-        I_GamepadPostKeyEvent(keycode, false);
     }
     *prev = now;
 }
 
-static SDL_INLINE void I_GamepadEdgeDetection(bool now, bool* prev, int keycode) {
-    if (now != *prev) { I_GamepadPostKeyEvent(keycode, now); *prev = now; }
-}
+static SDL_INLINE void I_GamepadButtonEvent(bool now, bool* prev, controller_button_t button) {
+    event_t ev;
 
-static SDL_INLINE void I_GamepadKeyRelease(void) {
-    I_GamepadEdgeDetection(false, &gamepad64.player_forward, GAMEPAD_KEY_MOVE_FWD);
-    I_GamepadEdgeDetection(false, &gamepad64.player_backwards, GAMEPAD_KEY_MOVE_BACK);
-    I_GamepadEdgeDetection(false, &gamepad64.player_left, GAMEPAD_KEY_MOVE_LEFT);
-    I_GamepadEdgeDetection(false, &gamepad64.player_right, GAMEPAD_KEY_MOVE_RIGHT);
-    I_GamepadEdgeDetection(false, &gamepad64.player_fire, GAMEPAD_KEY_FIRE);
-    I_GamepadEdgeDetection(false, &gamepad64.player_next_weapon, GAMEPAD_KEY_NEXT_WEAPON);
-    I_GamepadEdgeDetection(false, &gamepad64.player_previous_weapon, GAMEPAD_KEY_PREV_WEAPON);
-    I_GamepadEdgeDetection(false, &gamepad64.player_use, GAMEPAD_KEY_USE);
-    I_GamepadEdgeDetection(false, &gamepad64.player_run, GAMEPAD_KEY_RUN);
-    I_GamepadEdgeDetection(false, &gamepad64.player_automap, GAMEPAD_KEY_AUTOMAP);
+    if(now == *prev) {
+        return;
+    }
+
+    ev.type = now ? ev_gamepaddown : ev_gamepadup;
+    ev.data1 = button;
+    ev.data2 = ev.data3 = 0;
+    ev.data4 = 0;
+    D_PostEvent(&ev);
+    *prev = now;
 }
 
 static SDL_INLINE float I_GamepadAxisAlive(Sint16 v) {
@@ -364,21 +362,6 @@ static SDL_INLINE float I_GamepadAxisAlive(Sint16 v) {
     f = SDL_clamp(f, -1.f, 1.f);
     return f;
 }
-static SDL_INLINE float I_GamepadAxisDead(float v, float dz) {
-    float a = fabsf(v);
-    if (a <= dz) return 0.f;
-    float sign = (v < 0.f) ? -1.f : 1.f;
-    return sign * (a - dz) / (1.f - dz);
-}
-static SDL_INLINE void I_MouseRelease(int dx, int dy) {
-    event_t ev; ev.type = ev_mouse;
-    ev.data1 = 0;
-    ev.data2 = dx * 32;
-    ev.data3 = -dy * 32;
-    ev.data4 = 0;
-    D_PostEvent(&ev);
-}
-
 static void I_GamepadInit(void) {
     int index;
     const int count = SDL_NumJoysticks();
@@ -388,14 +371,9 @@ static void I_GamepadInit(void) {
             if (gamepad64.gamepad) gamepad64.active_id = SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(gamepad64.gamepad));
         }
     }
-    if (!gamepad64.gamepad && count > 0) {
-        gamepad64.joy = SDL_JoystickOpen(0);
-        if (gamepad64.joy) gamepad64.active_id = SDL_JoystickInstanceID(gamepad64.joy);
-    }
 }
 static void I_GamepadClose(void) {
     if (gamepad64.gamepad) { SDL_GameControllerClose(gamepad64.gamepad); gamepad64.gamepad = NULL; }
-    if (gamepad64.joy) { SDL_JoystickClose(gamepad64.joy); gamepad64.joy = NULL; }
     gamepad64.active_id = 0;
 }
 
@@ -410,7 +388,7 @@ static void I_GamepadHandleSDLEvent(const SDL_Event* e) {
     if (!gamepad64.init) return;
     switch (e->type) {
     case SDL_CONTROLLERDEVICEADDED:
-        if (!gamepad64.gamepad && !gamepad64.joy) {
+        if (!gamepad64.gamepad) {
             gamepad64.gamepad = SDL_GameControllerOpen(e->cdevice.which);
             if (gamepad64.gamepad) gamepad64.active_id = SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(gamepad64.gamepad));
         }
@@ -419,14 +397,10 @@ static void I_GamepadHandleSDLEvent(const SDL_Event* e) {
         if (gamepad64.active_id == e->cdevice.which) I_GamepadClose();
         break;
     case SDL_JOYDEVICEADDED:
-        if (!gamepad64.gamepad && !gamepad64.joy) {
+        if (!gamepad64.gamepad) {
             if (SDL_IsGameController(e->jdevice.which)) {
                 gamepad64.gamepad = SDL_GameControllerOpen(e->jdevice.which);
                 if (gamepad64.gamepad) gamepad64.active_id = SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(gamepad64.gamepad));
-            }
-            else {
-                gamepad64.joy = SDL_JoystickOpen(e->jdevice.which);
-                if (gamepad64.joy) gamepad64.active_id = SDL_JoystickInstanceID(gamepad64.joy);
             }
         }
         break;
@@ -440,6 +414,8 @@ static void I_GamepadHandleSDLEvent(const SDL_Event* e) {
 void I_GamepadUpdate(void) {
     if (!gamepad64.init) return;
 
+    SDL_GameControllerUpdate();
+
     float lx_raw = 0.f, ly_raw = 0.f, rx_raw = 0.f, ry_raw = 0.f;
     float lt = 0.f, rt = 0.f;
 
@@ -451,33 +427,39 @@ void I_GamepadUpdate(void) {
         lt = (float)SDL_GameControllerGetAxis(gamepad64.gamepad, SDL_CONTROLLER_AXIS_TRIGGERLEFT) / (float)SDL_JOYSTICK_AXIS_MAX;
         rt = (float)SDL_GameControllerGetAxis(gamepad64.gamepad, SDL_CONTROLLER_AXIS_TRIGGERRIGHT) / (float)SDL_JOYSTICK_AXIS_MAX;
     }
-    else if (gamepad64.joy) {
-        lx_raw = I_GamepadAxisAlive(SDL_JoystickGetAxis(gamepad64.joy, 0));
-        ly_raw = I_GamepadAxisAlive(SDL_JoystickGetAxis(gamepad64.joy, 1));
-        rx_raw = I_GamepadAxisAlive(SDL_JoystickGetAxis(gamepad64.joy, 2));
-        ry_raw = I_GamepadAxisAlive(SDL_JoystickGetAxis(gamepad64.joy, 3));
-    }
     float lx = 0.f, ly = 0.f, rx = 0.f, ry = 0.f;
     I_GamepadRadialLookSmoothing(lx_raw, ly_raw, GAMEPAD_INNER_DZ_LEFT, GAMEPAD_OUTER_DZ, GAMEPAD_EXPO_LEFT, GAMEPAD_ANTI_DZ, &lx, &ly);
     I_GamepadRadialLookSmoothing(rx_raw, ry_raw, GAMEPAD_INNER_DZ_RIGHT, GAMEPAD_OUTER_DZ, GAMEPAD_EXPO_RIGHT, GAMEPAD_ANTI_DZ, &rx, &ry);
 
     const bool in_menu = (menuactive || gamestate != GS_LEVEL);
 
-    if (in_menu) {
-        I_GamepadKeyRelease();
+    if(in_menu != gamepad64.in_menu) {
+        if(in_menu) {
+            G_ReleaseControllerActions();
+        }
+        gamepad64.in_menu = in_menu;
+    }
 
+    {
+        int i;
+
+        for(i = 0; i < CONTROLLER_LEFT_TRIGGER; i++) {
+            const bool pressed = gamepad64.gamepad && SDL_GameControllerGetButton(gamepad64.gamepad, ControllerButtonMap[i]) != 0;
+            if(i != CONTROLLER_MENU) {
+                I_GamepadButtonEvent(pressed, &gamepad64.action[i], (controller_button_t)i);
+            }
+        }
+        I_GamepadButtonEvent(lt >= GAMEPAD_TRIGGER_THRESHOLD, &gamepad64.action[CONTROLLER_LEFT_TRIGGER], CONTROLLER_LEFT_TRIGGER);
+        I_GamepadButtonEvent(rt >= GAMEPAD_TRIGGER_THRESHOLD, &gamepad64.action[CONTROLLER_RIGHT_TRIGGER], CONTROLLER_RIGHT_TRIGGER);
+    }
+
+    if (in_menu) {
         bool d_up = false, d_down = false, d_left = false, d_right = false;
         if (gamepad64.gamepad) {
             d_up = SDL_GameControllerGetButton(gamepad64.gamepad, SDL_CONTROLLER_BUTTON_DPAD_UP) != 0;
             d_down = SDL_GameControllerGetButton(gamepad64.gamepad, SDL_CONTROLLER_BUTTON_DPAD_DOWN) != 0;
             d_left = SDL_GameControllerGetButton(gamepad64.gamepad, SDL_CONTROLLER_BUTTON_DPAD_LEFT) != 0;
             d_right = SDL_GameControllerGetButton(gamepad64.gamepad, SDL_CONTROLLER_BUTTON_DPAD_RIGHT) != 0;
-        }
-        else if (gamepad64.joy) {
-            d_up = SDL_JoystickGetButton(gamepad64.joy, 10) != 0;
-            d_down = SDL_JoystickGetButton(gamepad64.joy, 11) != 0;
-            d_left = SDL_JoystickGetButton(gamepad64.joy, 12) != 0;
-            d_right = SDL_JoystickGetButton(gamepad64.joy, 13) != 0;
         }
         bool s_up = false, s_down = false, s_left = false, s_right = false;
         if (!(d_up | d_down | d_left | d_right)) {
@@ -491,102 +473,32 @@ void I_GamepadUpdate(void) {
         const bool mouse_left = d_left || s_left;
         const bool mouse_right = d_right || s_right;
 
-        I_GamepadMenuEvent(mouse_up, &gamepad64.mouse_up, KEY_UPARROW, &gamepad64.right_arrow_key_up);
-        I_GamepadMenuEvent(mouse_down, &gamepad64.mouse_down, KEY_DOWNARROW, &gamepad64.right_arrow_key_down);
-        I_GamepadMenuEvent(mouse_left, &gamepad64.mouse_left, KEY_LEFTARROW, &gamepad64.right_arrow_key_left);
-        I_GamepadMenuEvent(mouse_right, &gamepad64.mouse_right, KEY_RIGHTARROW, &gamepad64.right_arrow_key_right);
+        I_GamepadMenuEvent(mouse_up, &gamepad64.mouse_up, GAMEPAD_MENU_UP, &gamepad64.menu_up_tic);
+        I_GamepadMenuEvent(mouse_down, &gamepad64.mouse_down, GAMEPAD_MENU_DOWN, &gamepad64.menu_down_tic);
+        I_GamepadMenuEvent(mouse_left, &gamepad64.mouse_left, GAMEPAD_MENU_LEFT, &gamepad64.menu_left_tic);
+        I_GamepadMenuEvent(mouse_right, &gamepad64.mouse_right, GAMEPAD_MENU_RIGHT, &gamepad64.menu_right_tic);
 
-        bool a = false, b = false, startbtn = false, lb = false, rb = false;
+        bool a = false, b = false, x = false, startbtn = false, lb = false, rb = false;
         if (gamepad64.gamepad) {
             a = SDL_GameControllerGetButton(gamepad64.gamepad, SDL_CONTROLLER_BUTTON_A) != 0;
             b = SDL_GameControllerGetButton(gamepad64.gamepad, SDL_CONTROLLER_BUTTON_B) != 0;
+            x = SDL_GameControllerGetButton(gamepad64.gamepad, SDL_CONTROLLER_BUTTON_X) != 0;
             startbtn = SDL_GameControllerGetButton(gamepad64.gamepad, SDL_CONTROLLER_BUTTON_START) != 0;
             lb = SDL_GameControllerGetButton(gamepad64.gamepad, SDL_CONTROLLER_BUTTON_LEFTSHOULDER) != 0;
             rb = SDL_GameControllerGetButton(gamepad64.gamepad, SDL_CONTROLLER_BUTTON_RIGHTSHOULDER) != 0;
         }
-        else if (gamepad64.joy) {
-            a = SDL_JoystickGetButton(gamepad64.joy, 0) != 0;
-            b = SDL_JoystickGetButton(gamepad64.joy, 1) != 0;
-            startbtn = SDL_JoystickGetButton(gamepad64.joy, 9) != 0;
-            lb = SDL_JoystickGetButton(gamepad64.joy, 4) != 0;
-            rb = SDL_JoystickGetButton(gamepad64.joy, 5) != 0;
-        }
-        I_GamepadEdgeDetection(a, &gamepad64.mouse_accept, KEY_ENTER);
-        I_GamepadEdgeDetection((b | startbtn), &gamepad64.mouse_back, KEY_ESCAPE);
-        I_GamepadEdgeDetection(lb, &gamepad64.mouse_scroll_up, KEY_PAGEUP);
-        I_GamepadEdgeDetection(rb, &gamepad64.mouse_scroll_down, KEY_PAGEDOWN);
-
-        static float s_look_fx = 0.f, s_look_fy = 0.f;
-        s_look_fx = s_look_fy = 0.f;
-        gamepad64.gamepad_look_dx = gamepad64.gamepad_look_dy = 0.f;
+        I_GamepadMenuEvent(a, &gamepad64.mouse_accept, GAMEPAD_MENU_ACCEPT, &gamepad64.menu_accept_tic);
+        I_GamepadMenuEvent((b | startbtn), &gamepad64.mouse_back, GAMEPAD_MENU_BACK, &gamepad64.menu_back_tic);
+        I_GamepadMenuEvent(lb, &gamepad64.mouse_scroll_up, GAMEPAD_MENU_PAGE_UP, &gamepad64.menu_page_up_tic);
+        I_GamepadMenuEvent(rb, &gamepad64.mouse_scroll_down, GAMEPAD_MENU_PAGE_DOWN, &gamepad64.menu_page_down_tic);
+        I_GamepadMenuEvent(x, &gamepad64.mouse_delete, GAMEPAD_MENU_DELETE, &gamepad64.menu_delete_tic);
         return;
     }
-    const float mth = 0.28f;
-    const bool mv_fwd = (-ly) > mth;
-    const bool mv_back = (-ly) < -mth;
-    const bool mv_left = (lx) < -mth;
-    const bool mv_right = (lx) > mth;
+    G_DoCmdControllerMove(lx, ly);
+    G_DoCmdControllerLook(rx, ry);
 
-    I_GamepadEdgeDetection(mv_fwd, &gamepad64.player_forward, GAMEPAD_KEY_MOVE_FWD);
-    I_GamepadEdgeDetection(mv_back, &gamepad64.player_backwards, GAMEPAD_KEY_MOVE_BACK);
-    I_GamepadEdgeDetection(mv_left, &gamepad64.player_left, GAMEPAD_KEY_MOVE_LEFT);
-    I_GamepadEdgeDetection(mv_right, &gamepad64.player_right, GAMEPAD_KEY_MOVE_RIGHT);
-
-    float ads_scale = 1.f;
-    if (gamepad64.gamepad) {
-        if (lt >= GAMEPAD_ADS_LTRIG) ads_scale = GAMEPAD_ADS_SLOWDOWN;
-    }
-    else if (gamepad64.joy) {
-        if (SDL_JoystickGetButton(gamepad64.joy, 6)) ads_scale = GAMEPAD_ADS_SLOWDOWN;
-    }
-    const float sensx = v_msensitivityx.value > 0 ? v_msensitivityx.value : 1.f;
-    const float sensy = v_msensitivityy.value > 0 ? v_msensitivityy.value : 1.f;
-    const float inv = (v_mlookinvert.value ? -1.f : 1.f);
-
-    static float s_look_fx = 0.f, s_look_fy = 0.f;
-    const float dt = (1.0f / 35.0f);
-    s_look_fx = I_GamepadLookSmoothing(s_look_fx, rx, dt, GAMEPAD_LOOK_SMOOTH_TC);
-    s_look_fy = I_GamepadLookSmoothing(s_look_fy, ry, dt, GAMEPAD_LOOK_SMOOTH_TC);
-
-    const float dx = s_look_fx * GAMEPAD_LOOK_BASE_SPEED * sensx * ads_scale;
-    const float dy = s_look_fy * GAMEPAD_LOOK_BASE_SPEED * sensy * ads_scale * inv;
-
-    gamepad64.gamepad_look_dx += dx; gamepad64.gamepad_look_dy += dy;
-    const int sdx = (int)gamepad64.gamepad_look_dx;
-    const int sdy = (int)gamepad64.gamepad_look_dy;
-    if (sdx != 0 || sdy != 0) {
-        I_MouseRelease(sdx, sdy);
-        gamepad64.gamepad_look_dx -= sdx; gamepad64.gamepad_look_dy -= sdy;
-    }
-    bool fire = (rt >= GAMEPAD_TRIGGER_THRESHOLD);
-    bool alt = (lt >= GAMEPAD_TRIGGER_THRESHOLD);
-    bool nextw = false, prevw = false, use = false, pausebtn = false, run = false, automap = false;
-
-    if (gamepad64.gamepad) {
-        nextw = SDL_GameControllerGetButton(gamepad64.gamepad, SDL_CONTROLLER_BUTTON_RIGHTSHOULDER) != 0;
-        prevw = SDL_GameControllerGetButton(gamepad64.gamepad, SDL_CONTROLLER_BUTTON_LEFTSHOULDER) != 0;
-        use = SDL_GameControllerGetButton(gamepad64.gamepad, SDL_CONTROLLER_BUTTON_A) != 0;
-        run = SDL_GameControllerGetButton(gamepad64.gamepad, SDL_CONTROLLER_BUTTON_X) != 0;
-        automap = SDL_GameControllerGetButton(gamepad64.gamepad, SDL_CONTROLLER_BUTTON_Y) != 0;
-        pausebtn = SDL_GameControllerGetButton(gamepad64.gamepad, SDL_CONTROLLER_BUTTON_START) != 0;
-    }
-    else if (gamepad64.joy) {
-        nextw = SDL_JoystickGetButton(gamepad64.joy, 5) != 0;
-        prevw = SDL_JoystickGetButton(gamepad64.joy, 4) != 0;
-        use = SDL_JoystickGetButton(gamepad64.joy, 2) != 0;
-        run = SDL_JoystickGetButton(gamepad64.joy, 6) != 0;
-        automap = SDL_JoystickGetButton(gamepad64.joy, 7) != 0;
-        pausebtn = SDL_JoystickGetButton(gamepad64.joy, 9) != 0;
-        if (!fire) fire = SDL_JoystickGetButton(gamepad64.joy, 7) != 0;
-        if (!alt)  alt = SDL_JoystickGetButton(gamepad64.joy, 6) != 0;
-    }
-    I_GamepadEdgeDetection(fire, &gamepad64.player_fire, GAMEPAD_KEY_FIRE);
-    I_GamepadEdgeDetection(nextw, &gamepad64.player_next_weapon, GAMEPAD_KEY_NEXT_WEAPON);
-    I_GamepadEdgeDetection(prevw, &gamepad64.player_previous_weapon, GAMEPAD_KEY_PREV_WEAPON);
-    I_GamepadEdgeDetection(use, &gamepad64.player_use, GAMEPAD_KEY_USE);
-    I_GamepadEdgeDetection(pausebtn, &gamepad64.player_pause, GAMEPAD_KEY_PAUSE);
-    I_GamepadEdgeDetection(run, &gamepad64.player_run, GAMEPAD_KEY_RUN);
-    I_GamepadEdgeDetection(automap, &gamepad64.player_automap, GAMEPAD_KEY_AUTOMAP);
+    I_GamepadMenuEvent(gamepad64.gamepad && SDL_GameControllerGetButton(gamepad64.gamepad, SDL_CONTROLLER_BUTTON_START) != 0,
+        &gamepad64.mouse_back, GAMEPAD_MENU_BACK, &gamepad64.menu_back_tic);
 }
 
 //
@@ -706,8 +618,8 @@ static void I_ReadMouse(void) {
     if(x != 0 || y != 0 || btn || (lastmbtn != btn)) {
         ev.type = ev_mouse;
         ev.data1 = I_SDLtoDoomMouseState(btn);
-        ev.data2 = x * 32.0;
-        ev.data3 = -y * 32.0;
+        ev.data2 = (float)x * 32.0f;
+        ev.data3 = (float)-y * 32.0f;
         ev.data4 = 0;
         D_PostEvent(&ev);
     }
@@ -794,6 +706,19 @@ static void I_GetEvent(SDL_Event* Event) {
         D_PostEvent(&event);
         break;
 
+    case SDL_TEXTINPUT:
+        for(const unsigned char* text = (const unsigned char*)Event->text.text; *text; text++) {
+            // The menu font is ASCII-only, so leave multibyte characters alone.
+            if(*text < 0x80) {
+                event.type = ev_textinput;
+                event.data1 = *text;
+                event.data2 = event.data3 = 0;
+                event.data4 = 0;
+                D_PostEvent(&event);
+            }
+        }
+        break;
+
     case SDL_MOUSEBUTTONDOWN:
     case SDL_MOUSEBUTTONUP:
         if (!window_focused)
@@ -877,6 +802,9 @@ static void I_InitInputs(void) {
 void V_RegisterCvars(void) {
     CON_CvarRegister(&v_msensitivityx);
     CON_CvarRegister(&v_msensitivityy);
+    CON_CvarRegister(&v_gamepadsensitivityx);
+    CON_CvarRegister(&v_gamepadsensitivityy);
+    CON_CvarRegister(&v_gamepadlook);
     CON_CvarRegister(&v_macceleration);
     CON_CvarRegister(&v_mlook);
     CON_CvarRegister(&v_mlookinvert);

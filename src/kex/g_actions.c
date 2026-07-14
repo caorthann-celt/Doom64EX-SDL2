@@ -82,6 +82,12 @@ alist_t    *AllActions[NUM_ACTIONS];
 alist_t    **KeyActions;
 alist_t    **MouseActions;
 alist_t    **Mouse2Actions;
+static alist_t *ControllerActions[NUM_CONTROLLER_BUTTONS];
+
+static const char *ControllerButtonNames[NUM_CONTROLLER_BUTTONS] = {
+    "PadA", "PadB", "PadX", "PadY", "PadView", "PadMenu", "PadLB", "PadRB",
+    "PadLS", "PadRS", "PadUp", "PadDown", "PadLeft", "PadRight", "PadLT", "PadRT"
+};
 
 static int  JoyButtons = 0;
 static int  MouseButtons = 0;
@@ -100,6 +106,7 @@ static CMD(UnbindAll);
 
 void G_InitActions(void) {
     dmemset(AllActions, 0, NUM_ACTIONS);
+    dmemset(ControllerActions, 0, sizeof(ControllerActions));
     KeyActions = AllActions + KEY_ACTIONPOS;
     MouseActions = AllActions + MOUSE_ACTIONPOS;
     Mouse2Actions = AllActions + MOUSE2_ACTIONPOS;
@@ -409,6 +416,13 @@ dboolean G_ActionResponder(event_t *ev) {
     case ev_mouse:
         G_DoCmdMouseMove(ev->data2, ev->data3);
         break;
+
+    case ev_gamepaddown:
+    case ev_gamepadup:
+        if(ev->data1 >= 0 && ev->data1 < NUM_CONTROLLER_BUTTONS) {
+            TryActions(ControllerActions[ev->data1], ev->type == ev_gamepadup);
+        }
+        break;
     }
 
     return false;
@@ -562,6 +576,12 @@ alist_t **G_FindKeyByName(char *key) {
         return(FindActionControler(&key[5], MouseActions, MOUSE_BUTTONS));
     }
 
+    for(i = 0; i < NUM_CONTROLLER_BUTTONS; i++) {
+        if(dstricmp(key, ControllerButtonNames[i]) == 0) {
+            return &ControllerActions[i];
+        }
+    }
+
     for(i = 0; i < NUMKEYS; i++) {
         M_GetKeyName(buff, i);
         if(dstricmp(key, buff) == 0) {
@@ -633,6 +653,12 @@ dboolean G_BindActionByEvent(event_t *ev, char *action) {
             plist = &MouseActions[button];
         }
         break;
+
+    case ev_gamepaddown:
+        if(ev->data1 >= 0 && ev->data1 < NUM_CONTROLLER_BUTTONS) {
+            plist = &ControllerActions[ev->data1];
+        }
+        break;
     }
     if(plist) {
         G_BindAction(plist, action);
@@ -653,7 +679,7 @@ void G_BindActionByName(char *key, char *action) {
 // G_OutputBindings
 //
 
-static void OutputActions(FILE * fh, alist_t *al, char *name) {
+static void OutputActions(FILE * fh, alist_t *al, const char *name) {
     int i;
 
     fprintf(fh, "bind %s \"", name);
@@ -703,6 +729,13 @@ void G_OutputBindings(FILE *fh) {
             name[6] = i+'1';
             name[7] = 0;
             OutputActions(fh, al, name);
+        }
+    }
+
+    for(i = 0; i < NUM_CONTROLLER_BUTTONS; i++) {
+        al = ControllerActions[i];
+        if(al) {
+            OutputActions(fh, al, ControllerButtonNames[i]);
         }
     }
 
@@ -1133,8 +1166,8 @@ static void UnbindActions(alist_t **alist, int num) {
             continue;
         }
 
-        DerefActionList(*alist);
-        return;
+        DerefActionList(alist[i]);
+        alist[i] = NULL;
     }
 }
 
@@ -1145,6 +1178,7 @@ static void UnbindActions(alist_t **alist, int num) {
 
 static CMD(UnbindAll) {
     UnbindActions(AllActions, NUM_ACTIONS);
+    UnbindActions(ControllerActions, NUM_CONTROLLER_BUTTONS);
 }
 
 //
@@ -1201,10 +1235,10 @@ void G_GetActionName(char *buff, int n) {
 }
 
 //
-// G_GetActionBindings
+// G_GetKeyboardActionBindings
 //
 
-void G_GetActionBindings(char *buff, char *action) {
+void G_GetKeyboardActionBindings(char *buff, char *action) {
     int     i;
     char    *p;
 
@@ -1255,11 +1289,54 @@ void G_GetActionBindings(char *buff, char *action) {
     }
 }
 
+void G_GetControllerActionBindings(char *buff, char *action) {
+    int i;
+    char *p = buff;
+
+    *p = 0;
+    for(i = 0; i < NUM_CONTROLLER_BUTTONS; i++) {
+        if(IsSameAction(action, ControllerActions[i])) {
+            if(p != buff) {
+                *(p++) = ',';
+            }
+
+            if(p - buff + dstrlen(ControllerButtonNames[i]) >= MAX_MENUACTION_LENGTH) {
+                return;
+            }
+            dstrcpy(p, ControllerButtonNames[i]);
+            return;
+        }
+    }
+}
+
+void G_GetActionBindings(char *buff, char *action) {
+    char controllerBindings[MAX_MENUACTION_LENGTH];
+    int length;
+
+    G_GetKeyboardActionBindings(buff, action);
+    G_GetControllerActionBindings(controllerBindings, action);
+
+    if(controllerBindings[0] == 0) {
+        return;
+    }
+
+    length = dstrlen(buff);
+    if(length > 0 && length < MAX_MENUACTION_LENGTH - 1) {
+        buff[length++] = ',';
+        buff[length] = 0;
+    }
+
+    if(length < MAX_MENUACTION_LENGTH - 1) {
+        dstrncpy(&buff[length], controllerBindings, MAX_MENUACTION_LENGTH - length - 1);
+        buff[MAX_MENUACTION_LENGTH - 1] = 0;
+    }
+}
+
 //
-// G_UnbindAction
+// G_UnbindKeyboardAction
 //
 
-void G_UnbindAction(char *action) {
+void G_UnbindKeyboardAction(char *action) {
     int i;
 
     for(i = 0; i < NUMKEYS; i++) {
@@ -1292,6 +1369,24 @@ void G_UnbindAction(char *action) {
             Unbind(p);
             return;
         }
+    }
+}
+
+void G_UnbindControllerAction(char *action) {
+    int i;
+
+    for(i = 0; i < NUM_CONTROLLER_BUTTONS; i++) {
+        if(IsSameAction(action, ControllerActions[i])) {
+            Unbind((char *)ControllerButtonNames[i]);
+        }
+    }
+}
+
+void G_ReleaseControllerActions(void) {
+    int i;
+
+    for(i = 0; i < NUM_CONTROLLER_BUTTONS; i++) {
+        TryActions(ControllerActions[i], true);
     }
 }
 

@@ -40,8 +40,23 @@ typedef enum {
     ev_mouse,
     ev_mousedown,
     ev_mouseup,
-    ev_gamepad
+    ev_textinput,
+    ev_gamepad,
+    ev_gamepaddown,
+    ev_gamepadup
 } evtype_t;
+
+typedef enum {
+    GAMEPAD_MENU_UP,
+    GAMEPAD_MENU_DOWN,
+    GAMEPAD_MENU_LEFT,
+    GAMEPAD_MENU_RIGHT,
+    GAMEPAD_MENU_ACCEPT,
+    GAMEPAD_MENU_BACK,
+    GAMEPAD_MENU_PAGE_UP,
+    GAMEPAD_MENU_PAGE_DOWN,
+    GAMEPAD_MENU_DELETE
+} gamepad_menu_event_t;
 
 // Event structure.
 typedef struct {

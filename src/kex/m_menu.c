@@ -125,7 +125,10 @@ void(*menufadefunc)(void) = NULL;
 
 static char     MenuBindBuff[256];
 static char     MenuBindMessage[256];
+static char     MenuBindAction[256];
 static dboolean MenuBindActive = false;
+static dboolean MenuBindGamepad = false;
+static dboolean MenuBindSuppressControllerMenuInput = false;
 static dboolean showfullitemvalue[3] = { false, false, false};
 static int      levelwarp = 0;
 static dboolean wireframeon = false;
@@ -227,6 +230,8 @@ static void M_SetOptionValue(int choice, float min, float max, float inc, cvar_t
 static void M_DrawSmbString(const char* text, menu_t* menu, int item);
 static void M_DrawSaveGameFrontend(menu_t* def);
 static void M_SetInputString(char* string, int len);
+static void M_StopInputString(void);
+static void M_AppendInputCharacter(int ch);
 static void M_Scroll(menu_t* menu, dboolean up);
 
 static dboolean M_SetThumbnail(int which);
@@ -1498,6 +1503,9 @@ void M_DrawMouse(void);
 
 CVAR_EXTERNAL(v_msensitivityx);
 CVAR_EXTERNAL(v_msensitivityy);
+CVAR_EXTERNAL(v_gamepadsensitivityx);
+CVAR_EXTERNAL(v_gamepadsensitivityy);
+CVAR_EXTERNAL(v_gamepadlook);
 CVAR_EXTERNAL(v_mlook);
 CVAR_EXTERNAL(v_mlookinvert);
 CVAR_EXTERNAL(v_yaxismove);
@@ -2834,15 +2842,38 @@ void M_DoFeature(int choice) {
 //------------------------------------------------------------------------
 
 void M_ChangeKeyBinding(int choice);
+void M_ChangeGamepadBinding(int choice);
+void M_ChangeGamepadSensitivity(int choice);
+void M_ChangeGamepadLook(int choice);
 void M_BuildControlMenu(void);
 void M_DrawControls(void);
 
 #define NUM_NONBINDABLE_ITEMS   8
 #define NUM_CONTROL_ACTIONS     44
-#define NUM_CONTROL_ITEMS        NUM_CONTROL_ACTIONS + NUM_NONBINDABLE_ITEMS
+#define NUM_GAMEPAD_PREFIX_ITEMS 9
+#define NUM_GAMEPAD_SPACERS      4
+#define NUM_CONTROL_ITEMS        NUM_CONTROL_ACTIONS + NUM_GAMEPAD_PREFIX_ITEMS + NUM_GAMEPAD_SPACERS
+
+enum {
+    gamepad_settings,
+    gamepad_sensx,
+    gamepad_sensx_bar,
+    gamepad_sensy,
+    gamepad_sensy_bar,
+    gamepad_look,
+    gamepad_settings_gap,
+    gamepad_bindings,
+    gamepad_bindings_gap,
+    gamepad_action_start = NUM_GAMEPAD_PREFIX_ITEMS,
+    gamepad_strafe_gap = gamepad_action_start + 8,
+    gamepad_view_gap = gamepad_action_start + 18,
+    gamepad_artifact_gap = gamepad_action_start + 32,
+    gamepad_follow_gap = gamepad_action_start + 43
+};
 
 menuaction_t*   PlayerActions;
 menu_t          ControlsDef;
+menu_t          BindingMenuDef;
 menuitem_t      ControlsItem[NUM_CONTROL_ITEMS];
 
 static menuaction_t mPlayerActionsDef[NUM_CONTROL_ITEMS] = {
@@ -2892,8 +2923,94 @@ static menuaction_t mPlayerActionsDef[NUM_CONTROL_ITEMS] = {
     {NULL, NULL}
 };
 
+static dboolean ShowGamepadBindings = false;
+
+static menuaction_t *M_GetControlAction(int item) {
+    if(ShowGamepadBindings) {
+        // Drop the visual spacer rows before looking up the shared action list.
+        if(item < gamepad_action_start || item == gamepad_strafe_gap ||
+                item == gamepad_view_gap || item == gamepad_artifact_gap ||
+                item == gamepad_follow_gap) {
+            return NULL;
+        }
+        if(item > gamepad_follow_gap) {
+            item--;
+        }
+        if(item > gamepad_artifact_gap) {
+            item--;
+        }
+        if(item > gamepad_view_gap) {
+            item--;
+        }
+        if(item > gamepad_strafe_gap) {
+            item--;
+        }
+        item -= gamepad_action_start;
+        if(mPlayerActionsDef[item].name == NULL) {
+            return NULL;
+        }
+        return &mPlayerActionsDef[item];
+    }
+
+    if(mPlayerActionsDef[item].name == NULL) {
+        return NULL;
+    }
+    return &mPlayerActionsDef[item];
+}
+
+static const char *M_GetGamepadFixedControl(menuaction_t *action) {
+    if(action == NULL || action->action == NULL) {
+        return NULL;
+    }
+    if(!dstrcmp(action->action, "+forward")) {
+        return "Left Stick Up";
+    }
+    if(!dstrcmp(action->action, "+back")) {
+        return "Left Stick Down";
+    }
+    if(!dstrcmp(action->action, "+left")) {
+        return "Right Stick Left";
+    }
+    if(!dstrcmp(action->action, "+right")) {
+        return "Right Stick Right";
+    }
+    if(!dstrcmp(action->action, "+strafeleft")) {
+        return "Left Stick Left";
+    }
+    if(!dstrcmp(action->action, "+straferight")) {
+        return "Left Stick Right";
+    }
+    if(!dstrcmp(action->action, "+lookup")) {
+        return "Right Stick Up";
+    }
+    if(!dstrcmp(action->action, "+lookdown")) {
+        return "Right Stick Down";
+    }
+    return NULL;
+}
+
 void M_Controls(int choice) {
     M_SetupNextMenu(&ControlMenuDef);
+}
+
+static void M_FormatGamepadSlider(char *name, float value) {
+    char bar[13];
+    int i;
+    int filled = (int)(value * 12.0f / (float)MAXSENSITIVITY);
+    int percent = (int)(value * 100.0f / (float)MAXSENSITIVITY + 0.5f);
+
+    if(percent < 0) {
+        percent = 0;
+    }
+    else if(percent > 100) {
+        percent = 100;
+    }
+
+    for(i = 0; i < 12; i++) {
+        bar[i] = i < filled ? '=' : '-';
+    }
+    bar[12] = 0;
+    sprintf(name, "[%s] %3d%%", bar, percent);
 }
 
 void M_BuildControlMenu(void) {
@@ -2901,6 +3018,8 @@ void M_BuildControlMenu(void) {
     int            actions;
     int            item;
     int            i;
+    menuaction_t   *controlAction;
+    const char     *fixedControl;
 
     PlayerActions = mPlayerActionsDef;
 
@@ -2909,12 +3028,16 @@ void M_BuildControlMenu(void) {
         actions++;
     }
 
+    if(ShowGamepadBindings) {
+        actions += gamepad_action_start + NUM_GAMEPAD_SPACERS;
+    }
+
     menu = &ControlsDef;
     // add extra menu items for non-bindable items (display only)
-    menu->numitems = actions + NUM_NONBINDABLE_ITEMS;
+    menu->numitems = ShowGamepadBindings ? actions : actions + NUM_NONBINDABLE_ITEMS;
     menu->textonly = false;
     menu->numpageitems = 16;
-    menu->prevMenu = &ControlMenuDef;
+    menu->prevMenu = &BindingMenuDef;
     menu->menuitems = ControlsItem;
     menu->routine = M_DrawControls;
     menu->x = 120;
@@ -2922,23 +3045,102 @@ void M_BuildControlMenu(void) {
     menu->smallfont = true;
     menu->menupageoffset = 0;
     menu->scale = 0.75f;
-    sprintf(menu->title, "Bindings");
+    sprintf(menu->title, "%s", ShowGamepadBindings ? "Gamepad" : "Keyboard");
     menu->lastOn = itemOn;
 
     for(item = 0; item < actions; item++) {
-        dstrcpy(menu->menuitems[item].name, PlayerActions[item].name);
-        if(PlayerActions[item].action) {
-            for(i = dstrlen(PlayerActions[item].name); i < 15; i++) {
+        controlAction = M_GetControlAction(item);
+        fixedControl = ShowGamepadBindings ? M_GetGamepadFixedControl(controlAction) : NULL;
+        if(ShowGamepadBindings && item < gamepad_settings_gap) {
+            switch(item) {
+            case gamepad_settings:
+                dstrcpy(menu->menuitems[item].name, "Gamepad Settings");
+                menu->menuitems[item].status = -1;
+                menu->menuitems[item].routine = NULL;
+                break;
+            case gamepad_sensx:
+                dstrcpy(menu->menuitems[item].name, "Look Sensitivity X");
+                menu->menuitems[item].status = 2;
+                menu->menuitems[item].routine = M_ChangeGamepadSensitivity;
+                break;
+            case gamepad_sensx_bar:
+                M_FormatGamepadSlider(menu->menuitems[item].name, v_gamepadsensitivityx.value);
+                menu->menuitems[item].status = -1;
+                menu->menuitems[item].routine = NULL;
+                break;
+            case gamepad_sensy_bar:
+                M_FormatGamepadSlider(menu->menuitems[item].name, v_gamepadsensitivityy.value);
+                menu->menuitems[item].status = -1;
+                menu->menuitems[item].routine = NULL;
+                break;
+            case gamepad_sensy:
+                dstrcpy(menu->menuitems[item].name, "Look Sensitivity Y");
+                menu->menuitems[item].status = 2;
+                menu->menuitems[item].routine = M_ChangeGamepadSensitivity;
+                break;
+            case gamepad_look:
+                dstrcpy(menu->menuitems[item].name, "Vertical Look");
+                for(i = dstrlen(menu->menuitems[item].name); i < 15; i++) {
+                    menu->menuitems[item].name[i] = ' ';
+                }
+                menu->menuitems[item].name[15] = ':';
+                dstrcpy(&menu->menuitems[item].name[16], msgNames[(int)v_gamepadlook.value]);
+                menu->menuitems[item].status = 2;
+                menu->menuitems[item].routine = M_ChangeGamepadLook;
+                break;
+            }
+        }
+        else if(ShowGamepadBindings && item == gamepad_settings_gap) {
+            menu->menuitems[item].name[0] = 0;
+            menu->menuitems[item].status = -1;
+            menu->menuitems[item].routine = NULL;
+        }
+        else if(ShowGamepadBindings && item == gamepad_bindings) {
+            dstrcpy(menu->menuitems[item].name, "Bindings");
+            menu->menuitems[item].status = -1;
+            menu->menuitems[item].routine = NULL;
+        }
+        else if(ShowGamepadBindings && item == gamepad_bindings_gap) {
+            menu->menuitems[item].name[0] = 0;
+            menu->menuitems[item].status = -1;
+            menu->menuitems[item].routine = NULL;
+        }
+        else if(ShowGamepadBindings && (item == gamepad_strafe_gap ||
+                item == gamepad_view_gap || item == gamepad_artifact_gap ||
+                item == gamepad_follow_gap)) {
+            menu->menuitems[item].name[0] = 0;
+            menu->menuitems[item].status = -1;
+            menu->menuitems[item].routine = NULL;
+        }
+        else if(fixedControl) {
+            dstrcpy(menu->menuitems[item].name, controlAction->name);
+            for(i = dstrlen(controlAction->name); i < 15; i++) {
+                menu->menuitems[item].name[i] = ' ';
+            }
+            menu->menuitems[item].name[15] = ':';
+            dstrcpy(&menu->menuitems[item].name[16], fixedControl);
+            menu->menuitems[item].status = 1;
+            menu->menuitems[item].routine = NULL;
+        }
+        else if(controlAction && controlAction->action) {
+            dstrcpy(menu->menuitems[item].name, controlAction->name);
+            for(i = dstrlen(controlAction->name); i < 15; i++) {
                 menu->menuitems[item].name[i] = ' ';
             }
 
             menu->menuitems[item].name[15] = ':';
             menu->menuitems[item].status = 1;
-            menu->menuitems[item].routine = M_ChangeKeyBinding;
+            menu->menuitems[item].routine = ShowGamepadBindings ? M_ChangeGamepadBinding : M_ChangeKeyBinding;
 
-            G_GetActionBindings(&menu->menuitems[item].name[16], PlayerActions[item].action);
+            if(ShowGamepadBindings) {
+                G_GetControllerActionBindings(&menu->menuitems[item].name[16], controlAction->action);
+            }
+            else {
+                G_GetKeyboardActionBindings(&menu->menuitems[item].name[16], controlAction->action);
+            }
         }
         else {
+            dstrcpy(menu->menuitems[item].name, controlAction ? controlAction->name : "");
             menu->menuitems[item].status = -1;
             menu->menuitems[item].routine = NULL;
         }
@@ -2951,28 +3153,72 @@ void M_BuildControlMenu(void) {
     menu->menuitems[actions + i].status = s;            \
     menu->menuitems[actions + i].routine = NULL
 
-    ADD_NONBINDABLE_ITEM(0, "Non-Bindable Keys", -1);
-    ADD_NONBINDABLE_ITEM(1, "Save Game      : F2", 1);
-    ADD_NONBINDABLE_ITEM(2, "Load Game      : F3", 1);
-    ADD_NONBINDABLE_ITEM(3, "Screenshot     : F5", 1);
-    ADD_NONBINDABLE_ITEM(4, "Quicksave      : F6", 1);
-    ADD_NONBINDABLE_ITEM(5, "Quickload      : F7", 1);
-    ADD_NONBINDABLE_ITEM(6, "Change Gamma   : F11", 1);
-    ADD_NONBINDABLE_ITEM(7, "Chat           : t", 1);
+    if(!ShowGamepadBindings) {
+        ADD_NONBINDABLE_ITEM(0, "Non-Bindable Keys", -1);
+        ADD_NONBINDABLE_ITEM(1, "Save Game      : F2", 1);
+        ADD_NONBINDABLE_ITEM(2, "Load Game      : F3", 1);
+        ADD_NONBINDABLE_ITEM(3, "Screenshot     : F5", 1);
+        ADD_NONBINDABLE_ITEM(4, "Quicksave      : F6", 1);
+        ADD_NONBINDABLE_ITEM(5, "Quickload      : F7", 1);
+        ADD_NONBINDABLE_ITEM(6, "Change Gamma   : F11", 1);
+        ADD_NONBINDABLE_ITEM(7, "Chat           : t", 1);
+    }
 }
 
-void M_ChangeKeyBinding(int choice) {
+static void M_BeginBinding(int choice, dboolean gamepad) {
     char action[128];
-    sprintf(action, "%s %d", PlayerActions[choice].action, 1);
+    menuaction_t *controlAction = M_GetControlAction(choice);
+
+    if(controlAction == NULL || controlAction->action == NULL) {
+        return;
+    }
+
+    sprintf(action, "%s %d", controlAction->action, 1);
     dstrcpy(MenuBindBuff, action);
+    dstrcpy(MenuBindAction, controlAction->action);
     messageBindCommand=MenuBindBuff;
-    sprintf(MenuBindMessage, "%s", PlayerActions[choice].name);
+    sprintf(MenuBindMessage, "%s", controlAction->name);
+    MenuBindGamepad = gamepad;
     MenuBindActive = true;
 }
 
+void M_ChangeKeyBinding(int choice) {
+    M_BeginBinding(choice, false);
+}
+
+void M_ChangeGamepadBinding(int choice) {
+    M_BeginBinding(choice, true);
+}
+
+void M_ChangeGamepadSensitivity(int choice) {
+    cvar_t *sensitivity = itemOn == gamepad_sensx ? &v_gamepadsensitivityx : &v_gamepadsensitivityy;
+    float slope = (float)MAXSENSITIVITY / 100.0f;
+
+    if(choice == 0) {
+        M_SetCvar(sensitivity, sensitivity->value > slope ? sensitivity->value - slope : 0.0f);
+    }
+    else if(choice == 1) {
+        M_SetCvar(sensitivity, sensitivity->value < (float)MAXSENSITIVITY - slope ?
+                  sensitivity->value + slope : (float)MAXSENSITIVITY);
+    }
+
+    M_BuildControlMenu();
+}
+
+void M_ChangeGamepadLook(int choice) {
+    M_SetOptionValue(choice, 0, 1, 1, &v_gamepadlook);
+    M_BuildControlMenu();
+}
+
 void M_DrawControls(void) {
-    Draw_BigText(-1, 264, MENUCOLORWHITE , "Press Escape To Return");
-    Draw_BigText(-1, 280, MENUCOLORWHITE , "Press Delete To Unbind");
+    if(ShowGamepadBindings) {
+        Draw_BigText(-1, 270, MENUCOLORWHITE, "B: Return");
+        Draw_BigText(-1, 286, MENUCOLORWHITE, "X: Unbind");
+    }
+    else {
+        Draw_BigText(-1, 264, MENUCOLORWHITE, "Press Escape To Return");
+        Draw_BigText(-1, 280, MENUCOLORWHITE, "Press Delete To Unbind");
+    }
 }
 
 //------------------------------------------------------------------------
@@ -2983,16 +3229,18 @@ void M_DrawControls(void) {
 
 void M_ControlChoice(int choice);
 void M_DrawControlMenu(void);
+void M_BindingChoice(int choice);
+void M_DrawBindingMenu(void);
 
 enum {
-    controls_keyboard,
+    controls_bindings,
     controls_mouse,
     controls_return,
     controls_end
 } controls_e;
 
 menuitem_t ControlsMenu[]= {
-    {1,"Bindings",M_ControlChoice, 'k'},
+    {1,"Bindings",M_ControlChoice, 'b'},
     {1,"Mouse",M_ControlChoice, 'm'},
     {1,"/r Return",M_Return, 0x20}
 };
@@ -3023,13 +3271,63 @@ menu_t ControlMenuDef = {
 
 void M_ControlChoice(int choice) {
     switch(itemOn) {
-    case controls_keyboard:
-        M_BuildControlMenu();
-        M_SetupNextMenu(&ControlsDef);
+    case controls_bindings:
+        M_SetupNextMenu(&BindingMenuDef);
         break;
     case controls_mouse:
         M_SetupNextMenu(&MouseDef);
         break;
+    }
+}
+
+enum {
+    bindings_keyboard,
+    bindings_gamepad,
+    bindings_return,
+    bindings_end
+} bindings_e;
+
+menuitem_t BindingMenu[] = {
+    {1,"Keyboard",M_BindingChoice, 'k'},
+    {1,"Gamepad",M_BindingChoice, 'g'},
+    {1,"/r Return",M_Return, 0x20}
+};
+
+char* BindingHints[bindings_end] = {
+    "configure keyboard and mouse bindings",
+    "configure gamepad bindings",
+    NULL
+};
+
+menu_t BindingMenuDef = {
+    bindings_end,
+    false,
+    &ControlMenuDef,
+    BindingMenu,
+    M_DrawBindingMenu,
+    "Bindings",
+    120,64,
+    0,
+    false,
+    NULL,
+    -1,
+    0,
+    1,
+    BindingHints,
+    NULL
+};
+
+void M_BindingChoice(int choice) {
+    ShowGamepadBindings = (itemOn == bindings_gamepad);
+    M_BuildControlMenu();
+    M_SetupNextMenu(&ControlsDef);
+}
+
+void M_DrawBindingMenu(void) {
+    if(BindingMenuDef.hints[itemOn] != NULL) {
+        GL_SetOrthoScale(0.5f);
+        Draw_BigText(-1, 410, MENUCOLORWHITE, BindingMenuDef.hints[itemOn]);
+        GL_SetOrthoScale(BindingMenuDef.scale);
     }
 }
 
@@ -3622,6 +3920,32 @@ static void M_SetInputString(char* string, int len) {
 
     inputCharIndex = dstrlen(inputString);
     inputMax = len;
+    SDL_StartTextInput();
+}
+
+static void M_StopInputString(void) {
+    inputEnter = false;
+    SDL_StopTextInput();
+}
+
+static void M_AppendInputCharacter(int ch) {
+    if(inputCharIndex >= inputMax) {
+        return;
+    }
+
+    if(ch != 32) {
+        if(ch - ST_FONTSTART < 0 || ch - ST_FONTSTART >= ('z' - ST_FONTSTART + 1)) {
+            return;
+        }
+    }
+
+    if(ch >= 32 && ch <= 127) {
+        if(inputCharIndex < (MENUSTRINGSIZE - 1) &&
+                M_StringWidth(inputString) < (MENUSTRINGSIZE - 2) * 8) {
+            inputString[inputCharIndex++] = ch;
+            inputString[inputCharIndex] = 0;
+        }
+    }
 }
 
 //
@@ -4253,6 +4577,54 @@ dboolean M_Responder(event_t* ev) {
             shiftdown = false;
         }
     }
+    else if(ev->type == ev_gamepad) {
+        thermowait = 0;
+
+        if(MenuBindSuppressControllerMenuInput) {
+            MenuBindSuppressControllerMenuInput = false;
+            return true;
+        }
+
+        switch(ev->data1) {
+        case GAMEPAD_MENU_UP:        ch = KEY_UPARROW; break;
+        case GAMEPAD_MENU_DOWN:      ch = KEY_DOWNARROW; break;
+        case GAMEPAD_MENU_LEFT:      ch = KEY_LEFTARROW; break;
+        case GAMEPAD_MENU_RIGHT:     ch = KEY_RIGHTARROW; break;
+        case GAMEPAD_MENU_ACCEPT:    ch = KEY_ENTER; break;
+        case GAMEPAD_MENU_BACK:      ch = KEY_ESCAPE; break;
+        case GAMEPAD_MENU_PAGE_UP:   ch = KEY_PAGEUP; break;
+        case GAMEPAD_MENU_PAGE_DOWN: ch = KEY_PAGEDOWN; break;
+        case GAMEPAD_MENU_DELETE:    ch = KEY_DEL; break;
+        default: break;
+        }
+    }
+    else if(ev->type == ev_gamepaddown || ev->type == ev_gamepadup) {
+        if(MenuBindActive && MenuBindGamepad && ev->type == ev_gamepaddown) {
+            G_UnbindControllerAction(MenuBindAction);
+            if(G_BindActionByEvent(ev, messageBindCommand)) {
+                switch(ev->data1) {
+                case CONTROLLER_A:
+                case CONTROLLER_B:
+                case CONTROLLER_X:
+                case CONTROLLER_LEFT_SHOULDER:
+                case CONTROLLER_RIGHT_SHOULDER:
+                case CONTROLLER_DPAD_UP:
+                case CONTROLLER_DPAD_DOWN:
+                case CONTROLLER_DPAD_LEFT:
+                case CONTROLLER_DPAD_RIGHT:
+                    MenuBindSuppressControllerMenuInput = true;
+                    break;
+                default:
+                    break;
+                }
+                MenuBindActive = false;
+                MenuBindGamepad = false;
+                M_BuildControlMenu();
+            }
+        }
+
+        return menuactive || gamestate != GS_LEVEL || MenuBindActive;
+    }
     else if(ev->type == ev_mouse && (ev->data2 != 0.0 | ev->data3 != 0.0)) {
         // handle mouse-over selection
         if(m_menumouse.value) {
@@ -4263,6 +4635,12 @@ dboolean M_Responder(event_t* ev) {
         }
     }
 
+    // Text input has no keycode, so consume it before the normal key filter.
+    if(inputEnter && ev->type == ev_textinput) {
+        M_AppendInputCharacter(ev->data1);
+        return true;
+    }
+
     if(ch == -1) {
         return false;
     }
@@ -4270,9 +4648,11 @@ dboolean M_Responder(event_t* ev) {
     if(MenuBindActive == true) { //key Bindings
         if(ch == KEY_ESCAPE) {
             MenuBindActive = false;
+            MenuBindGamepad = false;
+            MenuBindSuppressControllerMenuInput = false;
             M_BuildControlMenu();
         }
-        else if(G_BindActionByEvent(ev, messageBindCommand)) {
+        else if(!MenuBindGamepad && G_BindActionByEvent(ev, messageBindCommand)) {
             MenuBindActive = false;
             M_BuildControlMenu();
         }
@@ -4290,12 +4670,12 @@ dboolean M_Responder(event_t* ev) {
             break;
 
         case KEY_ESCAPE:
-            inputEnter = false;
+            M_StopInputString();
             dstrcpy(inputString, oldInputString);
             break;
 
         case KEY_ENTER:
-            inputEnter = false;
+            M_StopInputString();
             if(currentMenu == &NetworkDef) {
                 CON_CvarSet(m_playername.name, inputString);
             }
@@ -4308,28 +4688,6 @@ dboolean M_Responder(event_t* ev) {
             break;
 
         default:
-
-            if(inputCharIndex >= inputMax) {
-                return true;
-            }
-
-            if(shiftdown) {
-                ch = toupper(ch);
-            }
-
-            if(ch != 32) {
-                if(ch - ST_FONTSTART < 0 || ch - ST_FONTSTART >= ('z' - ST_FONTSTART + 1)) {
-                    break;
-                }
-            }
-
-            if(ch >= 32 && ch <= 127) {
-                if(inputCharIndex < (MENUSTRINGSIZE - 1) &&
-                        M_StringWidth(inputString) < (MENUSTRINGSIZE - 2) * 8) {
-                    inputString[inputCharIndex++] = ch;
-                    inputString[inputCharIndex] = 0;
-                }
-            }
             break;
         }
         return true;
@@ -4439,7 +4797,7 @@ dboolean M_Responder(event_t* ev) {
                     currentMenu->menuitems[itemOn].status >= 2) {
                 currentMenu->menuitems[itemOn].routine(0);
 
-                if(currentMenu->menuitems[itemOn].status == 3) {
+                if(ev->type == ev_keydown && currentMenu->menuitems[itemOn].status == 3) {
                     thermowait = 1;
                 }
             }
@@ -4465,7 +4823,7 @@ dboolean M_Responder(event_t* ev) {
                     currentMenu->menuitems[itemOn].status >= 2) {
                 currentMenu->menuitems[itemOn].routine(1);
 
-                if(currentMenu->menuitems[itemOn].status == 3) {
+                if(ev->type == ev_keydown && currentMenu->menuitems[itemOn].status == 3) {
                     thermowait = -1;
                 }
             }
@@ -4508,7 +4866,7 @@ dboolean M_Responder(event_t* ev) {
                 else {
                     if(currentMenu == &ControlsDef) {
                         // don't do the fade effect and jump straight to the next screen
-                        M_ChangeKeyBinding(itemOn);
+                        currentMenu->menuitems[itemOn].routine(itemOn);
                     }
                     else {
                         currentMenu->menuitems[itemOn].routine(itemOn);
@@ -4535,7 +4893,17 @@ dboolean M_Responder(event_t* ev) {
         }
         else if(currentMenu == &ControlsDef) {
             if(currentMenu->menuitems[itemOn].routine) {
-                G_UnbindAction(PlayerActions[itemOn].action);
+                menuaction_t *controlAction = M_GetControlAction(itemOn);
+
+                if(controlAction == NULL || controlAction->action == NULL) {
+                    return true;
+                }
+                if(ShowGamepadBindings) {
+                    G_UnbindControllerAction(controlAction->action);
+                }
+                else {
+                    G_UnbindKeyboardAction(controlAction->action);
+                }
                 M_BuildControlMenu();
             }
         }
@@ -4821,8 +5189,8 @@ void M_Drawer(void) {
                 //
                 // tint the non-bindable key items to a shade of red
                 //
-                if(currentMenu == &ControlsDef) {
-                    if(i >= (NUM_CONTROL_ITEMS - NUM_NONBINDABLE_ITEMS)) {
+                if(currentMenu == &ControlsDef && !ShowGamepadBindings) {
+                    if(i >= NUM_CONTROL_ACTIONS) {
                         color = D_RGBA(255, 192, 192, menualphacolor);
                     }
                 }
@@ -4966,6 +5334,7 @@ void M_ClearMenus(void) {
     nextmenu = NULL;
     menualphacolor = 0xff;
     menuactive = 0;
+    M_StopInputString();
 
     S_ResumeSound();
 }

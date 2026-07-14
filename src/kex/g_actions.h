@@ -26,6 +26,26 @@
 
 #define MAX_ACTIONPARAM        2
 
+typedef enum {
+    CONTROLLER_A,
+    CONTROLLER_B,
+    CONTROLLER_X,
+    CONTROLLER_Y,
+    CONTROLLER_VIEW,
+    CONTROLLER_MENU,
+    CONTROLLER_LEFT_SHOULDER,
+    CONTROLLER_RIGHT_SHOULDER,
+    CONTROLLER_LEFT_STICK,
+    CONTROLLER_RIGHT_STICK,
+    CONTROLLER_DPAD_UP,
+    CONTROLLER_DPAD_DOWN,
+    CONTROLLER_DPAD_LEFT,
+    CONTROLLER_DPAD_RIGHT,
+    CONTROLLER_LEFT_TRIGGER,
+    CONTROLLER_RIGHT_TRIGGER,
+    NUM_CONTROLLER_BUTTONS
+} controller_button_t;
+
 typedef void (*actionproc_t)(int64 data, char **param);
 
 #define CMD(name) void CMD_ ## name(int64 data, char** param)
@@ -39,10 +59,16 @@ void        G_BindActionByName(char *key, char *action);
 dboolean    G_BindActionByEvent(event_t *ev, char *action);
 void        G_ShowBinding(char *key);
 void        G_GetActionBindings(char *buff, char *action);
-void        G_UnbindAction(char *action);
+void        G_GetKeyboardActionBindings(char *buff, char *action);
+void        G_GetControllerActionBindings(char *buff, char *action);
+void        G_UnbindKeyboardAction(char *action);
+void        G_UnbindControllerAction(char *action);
 int         G_ListCommands(void);
 void        G_OutputBindings(FILE *fh);
 void        G_DoCmdMouseMove(float x, float y);
+void        G_DoCmdControllerMove(float x, float y);
+void        G_DoCmdControllerLook(float x, float y);
+void        G_ReleaseControllerActions(void);
 
 extern dboolean    ButtonAction;
 

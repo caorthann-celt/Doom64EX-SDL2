@@ -168,6 +168,9 @@ CVAR_EXTERNAL(p_fdoubleclick);
 CVAR_EXTERNAL(p_sdoubleclick);
 CVAR_EXTERNAL(v_msensitivityx);
 CVAR_EXTERNAL(v_msensitivityy);
+CVAR_EXTERNAL(v_gamepadsensitivityx);
+CVAR_EXTERNAL(v_gamepadsensitivityy);
+CVAR_EXTERNAL(v_gamepadlook);
 
 //
 // G_RegisterCvars
@@ -675,6 +678,15 @@ void G_BuildTiccmd(ticcmd_t* cmd) {
         }
     }
 
+    cmd->angleturn -= (int)(pc->controllerlookx * 8.0f);
+
+    if(forcefreelook != 2) {
+        if((int)v_gamepadlook.value || forcefreelook) {
+            const int controller_pitch = (int)(pc->controllerlooky * 8.0f);
+            cmd->pitch -= (int)v_mlookinvert.value ? controller_pitch : -controller_pitch;
+        }
+    }
+
     if((int)v_yaxismove.value) {
         forward += pc->mousey;
     }
@@ -708,6 +720,7 @@ void G_BuildTiccmd(ticcmd_t* cmd) {
     }
 
     pc->mousex = pc->mousey = 0;
+    pc->controllerlookx = pc->controllerlooky = 0.0f;
     pc->joyx = pc->joyy = 0;
 
     cmd->chatchar = ST_DequeueChatChar();
@@ -847,6 +860,21 @@ void G_DoCmdMouseMove(float x, float y) {
     pc->mousey += ((I_MouseAccel(y) * (float)v_msensitivityy.value) / 128);
 }
 
+void G_DoCmdControllerMove(float x, float y) {
+    playercontrols_t *pc = &Controls;
+
+    pc->joyx += x * MAXPLMOVE;
+    pc->joyy -= y * MAXPLMOVE;
+    pc->flags |= PCF_GAMEPAD;
+}
+
+void G_DoCmdControllerLook(float x, float y) {
+    playercontrols_t *pc = &Controls;
+
+    pc->controllerlookx += x * (float)v_gamepadsensitivityx.value * 6.0f;
+    pc->controllerlooky -= y * (float)v_gamepadsensitivityy.value * 6.0f;
+}
+
 
 //
 // G_ClearInput
@@ -859,6 +887,8 @@ void G_ClearInput(void) {
     pc = &Controls;
     pc->flags = 0;
     pc->nextweapon = wp_nochange;
+    pc->controllerlookx = pc->controllerlooky = 0.0f;
+    pc->joyx = pc->joyy = 0.0f;
     for(i = 0; i < NUM_PCKEYS; i++) {
         pc->key[i] = 0;
     }

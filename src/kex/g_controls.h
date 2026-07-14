@@ -54,6 +54,8 @@ typedef enum {
 typedef struct {
     int            mousex;
     int            mousey;
+    float          controllerlookx;
+    float          controllerlooky;
     float          joyx;
     float          joyy;
     int            key[NUM_PCKEYS];
