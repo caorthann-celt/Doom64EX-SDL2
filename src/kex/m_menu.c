@@ -129,6 +129,7 @@ static char     MenuBindAction[256];
 static dboolean MenuBindActive = false;
 static dboolean MenuBindGamepad = false;
 static dboolean MenuBindSuppressControllerMenuInput = false;
+#define GAMEPAD_BIND_AXIS_THRESHOLD 0.50f
 static dboolean showfullitemvalue[3] = { false, false, false};
 static int      levelwarp = 0;
 static dboolean wireframeon = false;
@@ -2958,35 +2959,11 @@ static menuaction_t *M_GetControlAction(int item) {
     return &mPlayerActionsDef[item];
 }
 
-static const char *M_GetGamepadFixedControl(menuaction_t *action) {
-    if(action == NULL || action->action == NULL) {
-        return NULL;
-    }
-    if(!dstrcmp(action->action, "+forward")) {
-        return "Left Stick Up";
-    }
-    if(!dstrcmp(action->action, "+back")) {
-        return "Left Stick Down";
-    }
-    if(!dstrcmp(action->action, "+left")) {
-        return "Right Stick Left";
-    }
-    if(!dstrcmp(action->action, "+right")) {
-        return "Right Stick Right";
-    }
-    if(!dstrcmp(action->action, "+strafeleft")) {
-        return "Left Stick Left";
-    }
-    if(!dstrcmp(action->action, "+straferight")) {
-        return "Left Stick Right";
-    }
-    if(!dstrcmp(action->action, "+lookup")) {
-        return "Right Stick Up";
-    }
-    if(!dstrcmp(action->action, "+lookdown")) {
-        return "Right Stick Down";
-    }
-    return NULL;
+static dboolean M_IsGamepadAxisAction(const char *action) {
+    return action && (!dstrcmp(action, "+forward") || !dstrcmp(action, "+back") ||
+        !dstrcmp(action, "+strafeleft") || !dstrcmp(action, "+straferight") ||
+        !dstrcmp(action, "+left") || !dstrcmp(action, "+right") ||
+        !dstrcmp(action, "+lookup") || !dstrcmp(action, "+lookdown"));
 }
 
 void M_Controls(int choice) {
@@ -3019,7 +2996,6 @@ void M_BuildControlMenu(void) {
     int            item;
     int            i;
     menuaction_t   *controlAction;
-    const char     *fixedControl;
 
     PlayerActions = mPlayerActionsDef;
 
@@ -3050,7 +3026,6 @@ void M_BuildControlMenu(void) {
 
     for(item = 0; item < actions; item++) {
         controlAction = M_GetControlAction(item);
-        fixedControl = ShowGamepadBindings ? M_GetGamepadFixedControl(controlAction) : NULL;
         if(ShowGamepadBindings && item < gamepad_settings_gap) {
             switch(item) {
             case gamepad_settings:
@@ -3110,16 +3085,6 @@ void M_BuildControlMenu(void) {
                 item == gamepad_follow_gap)) {
             menu->menuitems[item].name[0] = 0;
             menu->menuitems[item].status = -1;
-            menu->menuitems[item].routine = NULL;
-        }
-        else if(fixedControl) {
-            dstrcpy(menu->menuitems[item].name, controlAction->name);
-            for(i = dstrlen(controlAction->name); i < 15; i++) {
-                menu->menuitems[item].name[i] = ' ';
-            }
-            menu->menuitems[item].name[15] = ':';
-            dstrcpy(&menu->menuitems[item].name[16], fixedControl);
-            menu->menuitems[item].status = 1;
             menu->menuitems[item].routine = NULL;
         }
         else if(controlAction && controlAction->action) {
@@ -4598,11 +4563,17 @@ dboolean M_Responder(event_t* ev) {
         default: break;
         }
     }
-    else if(ev->type == ev_gamepaddown || ev->type == ev_gamepadup) {
-        if(MenuBindActive && MenuBindGamepad && ev->type == ev_gamepaddown) {
+    else if(ev->type == ev_gamepaddown || ev->type == ev_gamepadup || ev->type == ev_gamepadaxis) {
+        if(MenuBindActive && MenuBindGamepad &&
+                (ev->type == ev_gamepaddown ||
+                 (ev->type == ev_gamepadaxis && ev->data2 >= GAMEPAD_BIND_AXIS_THRESHOLD &&
+                  M_IsGamepadAxisAction(MenuBindAction)))) {
             G_UnbindControllerAction(MenuBindAction);
             if(G_BindActionByEvent(ev, messageBindCommand)) {
-                switch(ev->data1) {
+                if(ev->type == ev_gamepadaxis) {
+                    MenuBindSuppressControllerMenuInput = true;
+                }
+                else switch(ev->data1) {
                 case CONTROLLER_A:
                 case CONTROLLER_B:
                 case CONTROLLER_X:
@@ -5102,7 +5073,8 @@ void M_Drawer(void) {
     }
 
     if(MenuBindActive) {
-        Draw_BigText(-1, 64, MENUCOLORWHITE, "Press New Key For");
+        Draw_BigText(-1, 64, MENUCOLORWHITE,
+            MenuBindGamepad ? "Press Button or Stick Direction For" : "Press New Key For");
         Draw_BigText(-1, 80, MENUCOLORRED, MenuBindMessage);
         return;
     }

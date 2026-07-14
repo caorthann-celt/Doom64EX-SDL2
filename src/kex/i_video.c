@@ -356,6 +356,34 @@ static SDL_INLINE void I_GamepadButtonEvent(bool now, bool* prev, controller_but
     *prev = now;
 }
 
+static void I_GamepadAxisEvent(controller_axis_t positive, controller_axis_t negative, float value) {
+    event_t ev;
+
+    if(value == 0.0f) {
+        return;
+    }
+
+    ev.type = ev_gamepadaxis;
+    ev.data1 = value > 0.0f ? positive : negative;
+    ev.data2 = fabsf(value);
+    ev.data3 = 0.0f;
+    ev.data4 = 0;
+    D_PostEvent(&ev);
+}
+
+static void I_GamepadStickAxisEvents(controller_axis_t right, controller_axis_t left,
+        controller_axis_t down, controller_axis_t up, float x, float y) {
+    // Send the dominant direction first so capture picks the direction the player meant.
+    if(fabsf(y) > fabsf(x)) {
+        I_GamepadAxisEvent(down, up, y);
+        I_GamepadAxisEvent(right, left, x);
+    }
+    else {
+        I_GamepadAxisEvent(right, left, x);
+        I_GamepadAxisEvent(down, up, y);
+    }
+}
+
 static SDL_INLINE float I_GamepadAxisAlive(Sint16 v) {
     const float maxmag = (float)SDL_JOYSTICK_AXIS_MAX;
     float f = (float)v / maxmag;
@@ -431,6 +459,11 @@ void I_GamepadUpdate(void) {
     I_GamepadRadialLookSmoothing(lx_raw, ly_raw, GAMEPAD_INNER_DZ_LEFT, GAMEPAD_OUTER_DZ, GAMEPAD_EXPO_LEFT, GAMEPAD_ANTI_DZ, &lx, &ly);
     I_GamepadRadialLookSmoothing(rx_raw, ry_raw, GAMEPAD_INNER_DZ_RIGHT, GAMEPAD_OUTER_DZ, GAMEPAD_EXPO_RIGHT, GAMEPAD_ANTI_DZ, &rx, &ry);
 
+    I_GamepadStickAxisEvents(CONTROLLER_AXIS_LEFT_RIGHT, CONTROLLER_AXIS_LEFT_LEFT,
+        CONTROLLER_AXIS_LEFT_DOWN, CONTROLLER_AXIS_LEFT_UP, lx, ly);
+    I_GamepadStickAxisEvents(CONTROLLER_AXIS_RIGHT_RIGHT, CONTROLLER_AXIS_RIGHT_LEFT,
+        CONTROLLER_AXIS_RIGHT_DOWN, CONTROLLER_AXIS_RIGHT_UP, rx, ry);
+
     const bool in_menu = (menuactive || gamestate != GS_LEVEL);
 
     if(in_menu != gamepad64.in_menu) {
@@ -494,9 +527,6 @@ void I_GamepadUpdate(void) {
         I_GamepadMenuEvent(x, &gamepad64.mouse_delete, GAMEPAD_MENU_DELETE, &gamepad64.menu_delete_tic);
         return;
     }
-    G_DoCmdControllerMove(lx, ly);
-    G_DoCmdControllerLook(rx, ry);
-
     I_GamepadMenuEvent(gamepad64.gamepad && SDL_GameControllerGetButton(gamepad64.gamepad, SDL_CONTROLLER_BUTTON_START) != 0,
         &gamepad64.mouse_back, GAMEPAD_MENU_BACK, &gamepad64.menu_back_tic);
 }

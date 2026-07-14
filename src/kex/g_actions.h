@@ -46,6 +46,18 @@ typedef enum {
     NUM_CONTROLLER_BUTTONS
 } controller_button_t;
 
+typedef enum {
+    CONTROLLER_AXIS_LEFT_UP,
+    CONTROLLER_AXIS_LEFT_DOWN,
+    CONTROLLER_AXIS_LEFT_LEFT,
+    CONTROLLER_AXIS_LEFT_RIGHT,
+    CONTROLLER_AXIS_RIGHT_UP,
+    CONTROLLER_AXIS_RIGHT_DOWN,
+    CONTROLLER_AXIS_RIGHT_LEFT,
+    CONTROLLER_AXIS_RIGHT_RIGHT,
+    NUM_CONTROLLER_AXES
+} controller_axis_t;
+
 typedef void (*actionproc_t)(int64 data, char **param);
 
 #define CMD(name) void CMD_ ## name(int64 data, char** param)

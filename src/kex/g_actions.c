@@ -83,10 +83,21 @@ alist_t    **KeyActions;
 alist_t    **MouseActions;
 alist_t    **Mouse2Actions;
 static alist_t *ControllerActions[NUM_CONTROLLER_BUTTONS];
+static alist_t *ControllerAxisActions[NUM_CONTROLLER_AXES];
 
 static const char *ControllerButtonNames[NUM_CONTROLLER_BUTTONS] = {
     "PadA", "PadB", "PadX", "PadY", "PadView", "PadMenu", "PadLB", "PadRB",
     "PadLS", "PadRS", "PadUp", "PadDown", "PadLeft", "PadRight", "PadLT", "PadRT"
+};
+
+static const char *ControllerAxisNames[NUM_CONTROLLER_AXES] = {
+    "PadLeftStickUp", "PadLeftStickDown", "PadLeftStickLeft", "PadLeftStickRight",
+    "PadRightStickUp", "PadRightStickDown", "PadRightStickLeft", "PadRightStickRight"
+};
+
+static const char *ControllerAxisLabels[NUM_CONTROLLER_AXES] = {
+    "Left Stick Up", "Left Stick Down", "Left Stick Left", "Left Stick Right",
+    "Right Stick Up", "Right Stick Down", "Right Stick Left", "Right Stick Right"
 };
 
 static int  JoyButtons = 0;
@@ -107,6 +118,7 @@ static CMD(UnbindAll);
 void G_InitActions(void) {
     dmemset(AllActions, 0, NUM_ACTIONS);
     dmemset(ControllerActions, 0, sizeof(ControllerActions));
+    dmemset(ControllerAxisActions, 0, sizeof(ControllerAxisActions));
     KeyActions = AllActions + KEY_ACTIONPOS;
     MouseActions = AllActions + MOUSE_ACTIONPOS;
     Mouse2Actions = AllActions + MOUSE2_ACTIONPOS;
@@ -387,6 +399,38 @@ static void ProcessButtonActions(alist_t **actions, int b, int ob) {
     ButtonAction = false;
 }
 
+static void ProcessControllerAxisActions(alist_t *al, float value) {
+    // Keep the real axis strength when a player remaps a stick direction.
+    if(!al || value <= 0.0f || al->next) {
+        return;
+    }
+
+    if(!dstricmp(al->cmd, "+forward")) {
+        G_DoCmdControllerMove(0.0f, -value);
+    }
+    else if(!dstricmp(al->cmd, "+back")) {
+        G_DoCmdControllerMove(0.0f, value);
+    }
+    else if(!dstricmp(al->cmd, "+strafeleft")) {
+        G_DoCmdControllerMove(-value, 0.0f);
+    }
+    else if(!dstricmp(al->cmd, "+straferight")) {
+        G_DoCmdControllerMove(value, 0.0f);
+    }
+    else if(!dstricmp(al->cmd, "+left")) {
+        G_DoCmdControllerLook(-value, 0.0f);
+    }
+    else if(!dstricmp(al->cmd, "+right")) {
+        G_DoCmdControllerLook(value, 0.0f);
+    }
+    else if(!dstricmp(al->cmd, "+lookup")) {
+        G_DoCmdControllerLook(0.0f, -value);
+    }
+    else if(!dstricmp(al->cmd, "+lookdown")) {
+        G_DoCmdControllerLook(0.0f, value);
+    }
+}
+
 //
 // G_ActionResponder
 //
@@ -421,6 +465,12 @@ dboolean G_ActionResponder(event_t *ev) {
     case ev_gamepadup:
         if(ev->data1 >= 0 && ev->data1 < NUM_CONTROLLER_BUTTONS) {
             TryActions(ControllerActions[ev->data1], ev->type == ev_gamepadup);
+        }
+        break;
+
+    case ev_gamepadaxis:
+        if(ev->data1 >= 0 && ev->data1 < NUM_CONTROLLER_AXES) {
+            ProcessControllerAxisActions(ControllerAxisActions[ev->data1], ev->data2);
         }
         break;
     }
@@ -582,6 +632,12 @@ alist_t **G_FindKeyByName(char *key) {
         }
     }
 
+    for(i = 0; i < NUM_CONTROLLER_AXES; i++) {
+        if(dstricmp(key, ControllerAxisNames[i]) == 0) {
+            return &ControllerAxisActions[i];
+        }
+    }
+
     for(i = 0; i < NUMKEYS; i++) {
         M_GetKeyName(buff, i);
         if(dstricmp(key, buff) == 0) {
@@ -657,6 +713,12 @@ dboolean G_BindActionByEvent(event_t *ev, char *action) {
     case ev_gamepaddown:
         if(ev->data1 >= 0 && ev->data1 < NUM_CONTROLLER_BUTTONS) {
             plist = &ControllerActions[ev->data1];
+        }
+        break;
+
+    case ev_gamepadaxis:
+        if(ev->data1 >= 0 && ev->data1 < NUM_CONTROLLER_AXES) {
+            plist = &ControllerAxisActions[ev->data1];
         }
         break;
     }
@@ -736,6 +798,12 @@ void G_OutputBindings(FILE *fh) {
         al = ControllerActions[i];
         if(al) {
             OutputActions(fh, al, ControllerButtonNames[i]);
+        }
+    }
+    for(i = 0; i < NUM_CONTROLLER_AXES; i++) {
+        al = ControllerAxisActions[i];
+        if(al) {
+            OutputActions(fh, al, ControllerAxisNames[i]);
         }
     }
 
@@ -1179,6 +1247,7 @@ static void UnbindActions(alist_t **alist, int num) {
 static CMD(UnbindAll) {
     UnbindActions(AllActions, NUM_ACTIONS);
     UnbindActions(ControllerActions, NUM_CONTROLLER_BUTTONS);
+    UnbindActions(ControllerAxisActions, NUM_CONTROLLER_AXES);
 }
 
 //
@@ -1307,6 +1376,12 @@ void G_GetControllerActionBindings(char *buff, char *action) {
             return;
         }
     }
+    for(i = 0; i < NUM_CONTROLLER_AXES; i++) {
+        if(IsSameAction(action, ControllerAxisActions[i])) {
+            dstrcpy(buff, ControllerAxisLabels[i]);
+            return;
+        }
+    }
 }
 
 void G_GetActionBindings(char *buff, char *action) {
@@ -1378,6 +1453,11 @@ void G_UnbindControllerAction(char *action) {
     for(i = 0; i < NUM_CONTROLLER_BUTTONS; i++) {
         if(IsSameAction(action, ControllerActions[i])) {
             Unbind((char *)ControllerButtonNames[i]);
+        }
+    }
+    for(i = 0; i < NUM_CONTROLLER_AXES; i++) {
+        if(IsSameAction(action, ControllerAxisActions[i])) {
+            Unbind((char *)ControllerAxisNames[i]);
         }
     }
 }

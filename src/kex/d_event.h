@@ -41,6 +41,7 @@ typedef enum {
     ev_mousedown,
     ev_mouseup,
     ev_textinput,
+    ev_gamepadaxis,
     ev_gamepad,
     ev_gamepaddown,
     ev_gamepadup
